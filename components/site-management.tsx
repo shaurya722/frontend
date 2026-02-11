@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { bulkImportSites, exportSitesToCSV } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Dialog,
@@ -762,68 +761,8 @@ export default function SiteManagement({
     filtered: filteredSites.length,
   }
 
-  const handleBulkImport = async () => {
-    if (!selectedFile) {
-      setImportErrors(["Please select a CSV file"])
-      return
-    }
 
-    setIsSaving(true)
-    try {
-      const response = await bulkImportSites(selectedFile)
-      if (response.error) {
-        setImportErrors([response.error])
-        return
-      }
 
-      setBulkImportResult(response.data)
-      setIsBulkImportDialogOpen(false)
-      setSelectedFile(null)
-
-      // Refresh the data to show new sites
-      if (onRefresh) {
-        onRefresh()
-      }
-
-      if (response.data) {
-        setSuccessMessage(`Successfully imported ${response.data.created} sites. ${response.data.errors?.length || 0} errors.`)
-      }
-    } catch (error: any) {
-      console.error("Error bulk importing:", error)
-      setImportErrors([error?.message || "Failed to import sites"])
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleExportSites = async () => {
-    setIsExporting(true)
-    try {
-      // Build current filters for export
-      const exportFilters: any = {}
-      if (statusFilter !== "all") exportFilters.status = statusFilter
-      if (siteTypeFilter !== "all") exportFilters.site_type = siteTypeFilter
-      if (operatorTypeFilter !== "all") exportFilters.operator_type = operatorTypeFilter
-      if (municipalityFilter !== "all") exportFilters.municipality = municipalityFilter
-      if (servicePartnerFilter !== "all") exportFilters.service_partner = servicePartnerFilter
-      if (programFilter !== "all") exportFilters.programs = [programFilter]
-      if (searchTerm) exportFilters.search = searchTerm
-
-      const blob = await exportSitesToCSV(exportFilters)
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `collection-sites-${new Date().toISOString().split("T")[0]}.csv`
-      a.click()
-      window.URL.revokeObjectURL(url)
-      setSuccessMessage("Sites exported successfully!")
-    } catch (error) {
-      console.error("Error exporting sites:", error)
-      setImportErrors(["Failed to export sites"])
-    } finally {
-      setIsExporting(false)
-    }
-  }
 
   const handleSiteStatusChange = async (siteId: string | number, newStatus: string) => {
     if (!setSites) return
@@ -894,7 +833,7 @@ export default function SiteManagement({
                 <Upload className="w-4 h-4 mr-2" />
                 Import CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExportSites} disabled={isExporting}>
+              <Button variant="outline" size="sm"  disabled={isExporting}>
                 <Download className="w-4 h-4 mr-2" />
                 {isExporting ? "Exporting..." : "Export"}
               </Button>
@@ -2334,7 +2273,7 @@ export default function SiteManagement({
             <Button variant="outline" onClick={() => { setIsBulkImportDialogOpen(false); setSelectedFile(null); setBulkImportResult(null); }}>
               Cancel
             </Button>
-            <Button onClick={handleBulkImport} disabled={!selectedFile || isSaving}>
+            <Button  disabled={!selectedFile || isSaving}>
               {isSaving ? "Importing..." : "Import"}
             </Button>
           </DialogFooter>

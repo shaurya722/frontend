@@ -1,154 +1,118 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import SiteManagement from "@/components/site-management"
-import { getSitesPaginated, getMunicipalities, type PaginatedSitesResponse } from "@/lib/sites"
 import type { CollectionSite, Municipality } from "@/lib/supabase"
-import type { SiteFilters } from "@/lib/api"
-import { getSiteStatistics } from "@/lib/api"
 
 export default function SitesPage() {
-  const [sites, setSites] = useState<CollectionSite[]>([])
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // Static mock data for sites
+  const [sites] = useState<CollectionSite[]>([
+    {
+      id: "1",
+      name: "Downtown Collection Site",
+      address: "123 Main St, Vancouver, BC",
+      municipality_id: "1",
+      municipality: {
+        id: "1",
+        name: "Vancouver",
+        population: 630000,
+        tier: "Upper",
+        region: "Lower Mainland",
+        province: "BC",
+        census_year: 2021,
+        created_at: "2023-01-01T00:00:00Z",
+        updated_at: "2023-01-01T00:00:00Z",
+      },
+      site_type: "Collection Site",
+      operator_type: "Municipal",
+      materials_collected: ["Plastic", "Glass"],
+      programs: ["Paint", "Lighting"],
+      status: "Active",
+      latitude: 49.2827,
+      longitude: -123.1207,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      name: "West End Depot",
+      address: "456 Oak St, Victoria, BC",
+      municipality_id: "2",
+      municipality: {
+        id: "2",
+        name: "Victoria",
+        population: 92000,
+        tier: "Single",
+        region: "Vancouver Island",
+        province: "BC",
+        census_year: 2021,
+        created_at: "2023-01-01T00:00:00Z",
+        updated_at: "2023-01-01T00:00:00Z",
+      },
+      site_type: "Collection Site",
+      operator_type: "Regional District",
+      materials_collected: ["Paper", "Metal"],
+      programs: ["Solvents", "Pesticides"],
+      status: "Active",
+      latitude: 48.4284,
+      longitude: -123.3656,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+  ])
+
+  const [municipalities] = useState<Municipality[]>([
+    {
+      id: "1",
+      name: "Vancouver",
+      population: 630000,
+      tier: "Upper",
+      region: "Lower Mainland",
+      province: "BC",
+      census_year: 2021,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      name: "Victoria",
+      population: 92000,
+      tier: "Single",
+      region: "Vancouver Island",
+      province: "BC",
+      census_year: 2021,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+  ])
+
+  const isLoading = false
   
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-  const [totalPages, setTotalPages] = useState(0)
-  const [totalItems, setTotalItems] = useState(0)
-  const [hasNext, setHasNext] = useState(false)
-  const [hasPrevious, setHasPrevious] = useState(false)
+  // Static pagination state
+  const currentPage = 1
+  const pageSize = 10
+  const totalPages = 1
+  const totalItems = 2
+  const hasNext = false
+  const hasPrevious = false
   
-  // Filter and search state
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filters, setFilters] = useState<Partial<SiteFilters>>({})
-  const [sortField, setSortField] = useState("")
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
-  
-  // Statistics state
-  const [statistics, setStatistics] = useState<{
-    total: number
-    active: number
-    scheduled: number
-    inactive: number
-    filtered: number
-  }>({
-    total: 0,
-    active: 0,
+  // Static statistics
+  const statistics = {
+    total: 2,
+    active: 2,
     scheduled: 0,
     inactive: 0,
-    filtered: 0,
-  })
-
-  const loadSites = useCallback(async (
-    page: number, 
-    size: number,
-    search?: string,
-    filterParams?: Partial<SiteFilters>,
-    sort?: string,
-    direction?: 'asc' | 'desc'
-  ) => {
-    setIsLoading(true)
-    try {
-      // Build filter object for API
-      const apiFilters: SiteFilters = {
-        page,
-        page_size: size,
-        ...filterParams,
-      }
-      
-      // Add search if provided
-      if (search) {
-        apiFilters.search = search
-      }
-      
-      // Add ordering if provided
-      if (sort) {
-        apiFilters.ordering = direction === 'desc' ? `-${sort}` : sort
-      }
-      
-      // Fetch sites and statistics in parallel
-      const [sitesResult, statsResult] = await Promise.all([
-        getSitesPaginated(page, size, apiFilters),
-        getSiteStatistics(apiFilters)
-      ])
-      
-      setSites(sitesResult.sites)
-      setTotalPages(sitesResult.totalPages)
-      setTotalItems(sitesResult.total)
-      setHasNext(sitesResult.hasNext)
-      setHasPrevious(sitesResult.hasPrevious)
-      setCurrentPage(sitesResult.page)
-      
-      // Update statistics if available
-      if (statsResult.data) {
-        setStatistics(statsResult.data)
-      }
-    } catch (error) {
-      console.error("Error loading sites:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  // Load municipalities once on mount
-  useEffect(() => {
-    const loadMunicipalities = async () => {
-      try {
-        const municipalitiesData = await getMunicipalities({ page_size: 1000 })
-        const municipalityList = municipalitiesData.results.map(m => ({
-          id: m.id,
-          name: m.name,
-          population: m.population,
-          tier: m.tier,
-          region: m.region,
-          province: m.province,
-          census_year: m.census_year,
-          created_at: m.created_at,
-          updated_at: m.updated_at,
-        }))
-        setMunicipalities(municipalityList)
-      } catch (error) {
-        console.error("Error loading municipalities:", error)
-      }
-    }
-    loadMunicipalities()
-  }, [])
-
-  // Load sites when dependencies change
-  useEffect(() => {
-    loadSites(currentPage, pageSize, searchTerm, filters, sortField, sortDirection)
-  }, [currentPage, pageSize, searchTerm, filters, sortField, sortDirection, loadSites])
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page)
+    filtered: 2,
   }
 
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size)
-    setCurrentPage(1) // Reset to first page when changing page size
-  }
-
-  const handleSearchChange = (search: string) => {
-    setSearchTerm(search)
-    setCurrentPage(1) // Reset to first page on search
-  }
-
-  const handleFilterChange = (newFilters: any) => {
-    setFilters(newFilters)
-    setCurrentPage(1) // Reset to first page on filter change
-  }
-
-  const handleSortChange = (field: string, direction: 'asc' | 'desc') => {
-    setSortField(field)
-    setSortDirection(direction)
-  }
-
-  const handleRefresh = useCallback(() => {
-    loadSites(currentPage, pageSize, searchTerm, filters, sortField, sortDirection)
-  }, [loadSites, currentPage, pageSize, searchTerm, filters, sortField, sortDirection])
+  // Empty handler functions for UI
+  const handlePageChange = () => {}
+  const handlePageSizeChange = () => {}
+  const handleSearchChange = () => {}
+  const handleFilterChange = () => {}
+  const handleSortChange = () => {}
+  const handleRefresh = () => {}
 
   return (
     <DashboardLayout
@@ -166,7 +130,6 @@ export default function SitesPage() {
       ) : (
         <SiteManagement 
           sites={sites} 
-          setSites={setSites} 
           municipalities={municipalities}
           // Pagination props
           currentPage={currentPage}

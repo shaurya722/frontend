@@ -1,19 +1,21 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import UserManagement from "@/components/user-management"
 import type { User } from "@/lib/supabase"
 
 export default function UsersPage() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
-
-  useEffect(() => {
-    const userData = localStorage.getItem("user")
-    if (userData) {
-      setCurrentUser(JSON.parse(userData))
-    }
-  }, [])
+  // Static mock user for UI display
+  const currentUser: User = {
+    id: "1",
+    username: "admin",
+    email: "admin@example.com",
+    name: "Administrator",
+    role: "Administrator",
+    created_at: "2023-01-01T00:00:00Z",
+    updated_at: "2023-01-01T00:00:00Z",
+    is_active: true,
+  }
 
   return (
     <DashboardLayout

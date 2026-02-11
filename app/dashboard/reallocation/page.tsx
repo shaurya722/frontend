@@ -1,46 +1,52 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import ReallocationTools from "@/components/reallocation-tools"
-import { getSites, getMunicipalities } from "@/lib/sites"
 import type { CollectionSite, Municipality } from "@/lib/supabase"
 
 export default function ReallocationPage() {
-  const [sites, setSites] = useState<CollectionSite[]>([])
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // Static mock data for sites
+  const sites: CollectionSite[] = [
+    {
+      id: "1",
+      name: "Downtown Collection Site",
+      address: "123 Main St, Vancouver, BC",
+      municipality_id: "1",
+      site_type: "Collection Site",
+      operator_type: "Municipal",
+      programs: ["Paint", "Lighting"],
+      status: "Active",
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+  ]
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [sitesData, municipalitiesResponse] = await Promise.all([
-          getSites(),
-          getMunicipalities({ page_size: 1000 })
-        ])
-        setSites(sitesData || [])
-        // Transform ApiMunicipality to Municipality
-        const transformedMunicipalities: Municipality[] = municipalitiesResponse.results.map(m => ({
-          id: m.id,
-          name: m.name,
-          population: m.population,
-          tier: m.tier,
-          region: m.region,
-          province: m.province,
-          census_year: m.census_year,
-          created_at: m.created_at,
-          updated_at: m.updated_at,
-        }))
-        setMunicipalities(transformedMunicipalities)
-      } catch (error) {
-        console.error("Error loading data:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  const municipalities: Municipality[] = [
+    {
+      id: "1",
+      name: "Vancouver",
+      population: 630000,
+      tier: "Upper",
+      region: "Lower Mainland",
+      province: "BC",
+      census_year: 2021,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      name: "Victoria",
+      population: 92000,
+      tier: "Single",
+      region: "Vancouver Island",
+      province: "BC",
+      census_year: 2021,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+  ]
 
-    loadData()
-  }, [])
+  const isLoading = false
 
   return (
     <DashboardLayout

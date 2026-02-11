@@ -1,41 +1,36 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import DirectServiceOffset from "@/components/direct-service-offset"
-import { getMunicipalities } from "@/lib/sites"
 import type { Municipality } from "@/lib/supabase"
 
 export default function OffsetPage() {
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const municipalitiesData = await getMunicipalities({ page_size: 1000 })
-        // Transform ApiMunicipality to Municipality
-        const transformedMunicipalities: Municipality[] = municipalitiesData.results.map(m => ({
-          id: m.id,
-          name: m.name,
-          population: m.population,
-          tier: m.tier,
-          region: m.region,
-          province: m.province,
-          census_year: m.census_year,
-          created_at: m.created_at,
-          updated_at: m.updated_at,
-        }))
-        setMunicipalities(transformedMunicipalities)
-      } catch (error) {
-        console.error("Error loading data:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadData()
-  }, [])
+  // Static mock data for municipalities
+  const municipalities: Municipality[] = [
+    {
+      id: "1",
+      name: "Vancouver",
+      population: 630000,
+      tier: "Upper",
+      region: "Lower Mainland",
+      province: "BC",
+      census_year: 2021,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+    {
+      id: "2",
+      name: "Victoria",
+      population: 92000,
+      tier: "Single",
+      region: "Vancouver Island",
+      province: "BC",
+      census_year: 2021,
+      created_at: "2023-01-01T00:00:00Z",
+      updated_at: "2023-01-01T00:00:00Z",
+    },
+  ]
+  const isLoading = false
 
   return (
     <DashboardLayout
