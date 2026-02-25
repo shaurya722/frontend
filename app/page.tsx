@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { defaultProtectedRoute, defaultPublicRoute } from "@/lib/route-config"
 
 export default function HomePage() {
   const router = useRouter()
@@ -10,9 +11,9 @@ export default function HomePage() {
     // Check if user is logged in
     const userData = localStorage.getItem("user")
     if (userData) {
-      router.push("/dashboard")
+      window.location.href = defaultProtectedRoute
     } else {
-      router.push("/login")
+      window.location.href = defaultPublicRoute
     }
   }, [router])
 

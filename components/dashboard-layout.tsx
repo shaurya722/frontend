@@ -19,7 +19,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Badge } from '@/components/ui/badge'
-import AuthGuard from '@/components/auth-guard'
+// import AuthGuard from '@/components/auth-guard'
 
 // Define breadcrumb items with labels and their corresponding routes
 interface BreadcrumbItemConfig {
@@ -81,7 +81,7 @@ export function DashboardLayout({
   }
 
   return (
-    <AuthGuard>
+    // <AuthGuard>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
@@ -101,9 +101,9 @@ export function DashboardLayout({
                       const isLast = index === breadcrumb.length - 1
 
                       return (
-                        <BreadcrumbItem key={index}>
-                          {!isLast && href ? (
-                            <>
+                        <>
+                          <BreadcrumbItem>
+                            {!isLast && href ? (
                               <BreadcrumbLink asChild>
                                 <Link
                                   href={href}
@@ -112,14 +112,14 @@ export function DashboardLayout({
                                   {label}
                                 </Link>
                               </BreadcrumbLink>
-                              <BreadcrumbSeparator />
-                            </>
-                          ) : (
-                            <BreadcrumbPage className='truncate'>
-                              {label}
-                            </BreadcrumbPage>
-                          )}
-                        </BreadcrumbItem>
+                            ) : (
+                              <BreadcrumbPage className='truncate'>
+                                {label}
+                              </BreadcrumbPage>
+                            )}
+                          </BreadcrumbItem>
+                          {!isLast && <BreadcrumbSeparator />}
+                        </>
                       )
                     })}
                   </BreadcrumbList>
@@ -150,6 +150,6 @@ export function DashboardLayout({
           </div>
         </SidebarInset>
       </SidebarProvider>
-    </AuthGuard>
+    // </AuthGuard>
   )
 }

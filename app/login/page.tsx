@@ -14,7 +14,7 @@ import { login } from "@/lib/auth"
 
 export default function LoginPage() {
   const [credentials, setCredentials] = useState({
-    username: "",
+    email: "",
     password: "",
   })
   const [showPassword, setShowPassword] = useState(false)
@@ -27,34 +27,19 @@ export default function LoginPage() {
     setIsLoading(true)
     setError("")
 
-    console.log("[v0] Login attempt for:", credentials.username)
+    console.log("[v0] Login attempt for:", credentials.email)
 
     try {
       const user = await login(credentials)
 
-      if (user) {
-        const sessionData = {
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          role: user.role,
-          email: user.email,
-          loginTime: new Date().toISOString(),
-        }
+      console.log("[v0] Login successful:", user)
 
-        console.log("[v0] Login successful, storing session:", sessionData)
-        localStorage.setItem("user", JSON.stringify(sessionData))
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
-        await new Promise((resolve) => setTimeout(resolve, 100))
-
-        window.location.href = "/dashboard"
-      } else {
-        console.log("[v0] Login failed - invalid credentials")
-        setError("Invalid username or password")
-      }
-    } catch (error) {
+      window.location.href = "/dashboard"
+    } catch (error: any) {
       console.error("[v0] Login error:", error)
-      setError("Login failed. Please try again.")
+      setError(error.message || "Invalid email or password. Please try again.")
     }
 
     setIsLoading(false)
@@ -83,13 +68,13 @@ export default function LoginPage() {
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="username"
-                  type="text"
-                  value={credentials.username}
-                  onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
-                  placeholder="Enter your username"
+                  id="email"
+                  type="email"
+                  value={credentials.email}
+                  onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
+                  placeholder="Enter your email"
                   required
                 />
               </div>
@@ -144,15 +129,7 @@ export default function LoginPage() {
             <div className="text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="font-medium">Administrator:</span>
-                <span>admin / admin123</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-medium">Analyst:</span>
-                <span>analyst / analyst123</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-medium">Viewer:</span>
-                <span>viewer / viewer123</span>
+                <span>admin@email.com / admin</span>
               </div>
             </div>
           </CardContent>

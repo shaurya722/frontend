@@ -53,10 +53,10 @@ import {
 } from "@/components/ui/alert-dialog"
 
 interface UserData {
-  username: string
-  name: string
-  role: string
-  loginTime: string
+  id: number
+  email: string
+  first_name: string
+  last_name: string
 }
 
 export function AppSidebar() {
@@ -72,12 +72,14 @@ export function AppSidebar() {
     }
   }, [])
 
-  const isAdmin = user?.role === "Administrator"
-  const isAnalyst = user?.role === "Compliance Analyst" || isAdmin
+  const isAdmin = true // TODO: Implement role-based access when roles are available from API
+  const isAnalyst = true // TODO: Implement role-based access when roles are available from API
 
   const handleLogout = () => {
     // Clear all user-related data from localStorage
     localStorage.removeItem("user")
+    localStorage.removeItem("access_token")
+    localStorage.removeItem("refresh_token")
     localStorage.removeItem("authToken")
     localStorage.removeItem("session")
     
@@ -93,7 +95,10 @@ export function AppSidebar() {
     setShowLogoutDialog(true)
   }
 
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | undefined) => {
+    if (!name || name.trim() === '') {
+      return 'U'
+    }
     return name
       .split(" ")
       .map((n) => n[0])
@@ -273,12 +278,12 @@ export function AppSidebar() {
                 >
                   <Avatar className="h-8 w-8 rounded-lg">
                     <AvatarFallback className="rounded-lg bg-blue-600 text-white">
-                      {getInitials(user.name)}
+                      {getInitials(`${user.first_name} ${user.last_name}`)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{user.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">@{user.username}</span>
+                    <span className="truncate font-semibold">{`${user.first_name} ${user.last_name}`.trim() || user.email}</span>
+                    <span className="truncate text-xs text-muted-foreground">{user.email}</span>
                   </div>
                   <ChevronDown className="ml-auto size-4" />
                 </SidebarMenuButton>
@@ -293,12 +298,12 @@ export function AppSidebar() {
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="h-8 w-8 rounded-lg">
                       <AvatarFallback className="rounded-lg bg-blue-600 text-white">
-                        {getInitials(user.name)}
+                        {getInitials(`${user.first_name} ${user.last_name}`)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{user.name}</span>
-                      <span className="truncate text-xs text-muted-foreground">@{user.username}</span>
+                      <span className="truncate font-semibold">{`${user.first_name} ${user.last_name}`.trim() || user.email}</span>
+                      <span className="truncate text-xs text-muted-foreground">{user.email}</span>
                     </div>
                   </div>
                 </DropdownMenuLabel>
@@ -336,7 +341,7 @@ export function AppSidebar() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              className="bg-black hover:bg-black focus:ring-black"
             >
               Log out
             </AlertDialogAction>

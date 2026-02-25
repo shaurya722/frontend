@@ -1,6 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useForm, Controller } from 'react-hook-form'
+import { yupResolver } from '@hookform/resolvers/yup'
+import * as yup from 'yup'
 import {
   Card,
   CardContent,
@@ -38,9 +41,9 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit, CheckCircle, Plus, Info, Trash2 } from 'lucide-react'
-import type { RegulatoryRule } from '@/lib/supabase'
-import * as api from '@/lib/api'
+import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react'
+import type { RegulatoryRule } from '@/lib/api/regulatory-rules'
+import { useRegulatoryRules, useCommunityRegulatoryRule, useUpdateCommunityRegulatoryRule } from '@/features/community-regulatory-rules'
 
 interface RuleParameters {
   // Site Calculation Parameters
@@ -75,306 +78,273 @@ interface RegulatoryRulesManagementProps {
 export default function RegulatoryRulesManagement({
   currentUser,
 }: RegulatoryRulesManagementProps) {
-  const [rules, setRules] = useState<RegulatoryRule[]>([])
-  const [loading, setLoading] = useState(true)
-  const [editingRule, setEditingRule] = useState<RegulatoryRule | null>(null)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [newRule, setNewRule] = useState<Partial<RegulatoryRule>>({
-    program: 'Paint',
-    category: 'HSP',
-    rule_type: 'site_calculation',
-    name: '',
-    description: '',
-    parameters: {},
-    status: 'Active',
-  })
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedProgram, setSelectedProgram] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedRuleType, setSelectedRuleType] = useState('all')
+  
+  // Pagination state
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  
+  // Sort state
+  const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
+  const [sortBy, setSortBy] = useState('created_at')
+  
+  // Dialog state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
+  // Debounce search input
   useEffect(() => {
-    fetchRules()
-  }, [])
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
-  const fetchRules = async () => {
-    try {
-      console.log('[v0] Fetching regulatory rules...')
-      setLoading(true)
+  // Build query params for React Query
+  const queryParams = useMemo(() => {
+    const filters: any = {}
+    if (selectedProgram !== 'all') filters.program = selectedProgram
+    if (selectedCategory !== 'all') filters.category = selectedCategory
+    if (selectedRuleType !== 'all') filters.rule_type = selectedRuleType
 
-      const data = await api.compliance.regulatoryRules.list()
-
-      console.log(
-        '[v0] Successfully fetched',
-        data?.length || 0,
-        'regulatory rules',
-      )
-      setRules(data || [])
-    } catch (error) {
-      console.error('[v0] Failed to load regulatory rules:', error)
-      setRules([])
-    } finally {
-      setLoading(false)
+    return {
+      page,
+      limit: pageSize,
+      search: debouncedSearch || undefined,
+      searchFields: ['name', 'description'],
+      filters: Object.keys(filters).length > 0 ? filters : undefined,
+      sort: sortOrder,
+      sortBy,
     }
-  }
+  }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, sortOrder, sortBy])
 
-  const filteredRules = rules.filter((rule) => {
-    const programMatch =
-      selectedProgram === 'all' ||
-      rule.program === selectedProgram ||
-      rule.program === 'All'
-    const categoryMatch =
-      selectedCategory === 'all' ||
-      rule.category === selectedCategory ||
-      rule.category === 'Offset'
-    const ruleTypeMatch =
-      selectedRuleType === 'all' || rule.rule_type === selectedRuleType
-    return programMatch && categoryMatch && ruleTypeMatch
+  // Fetch regulatory rules using React Query
+  const { data: regulatoryRulesResponse, isLoading, error, refetch } = useRegulatoryRules(queryParams)
+
+  // Mutations
+  const updateMutation = useUpdateCommunityRegulatoryRule()
+  // const deleteMutation = useDeleteCommunityRegulatoryRule()
+
+  // Form schemas
+  const editSchema = yup.object({
+    name: yup.string().required('Rule name is required'),
+    description: yup.string().required('Description is required'),
+    program: yup.string().required('Program is required'),
+    category: yup.string().required('Category is required'),
+    rule_type: yup.string().required('Rule type is required'),
+    min_population: yup.number().nullable(),
+    max_population: yup.number().nullable(),
+    site_per_population: yup.number().nullable(),
+    base_required_sites: yup.number().nullable(),
+    event_offset_percentage: yup.number().nullable(),
+    reallocation_percentage: yup.number().nullable(),
+    is_active: yup.boolean(),
+  }).required()
+
+  const editForm = useForm({
+    resolver: yupResolver(editSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      program: 'Paint',
+      category: 'HSP',
+      rule_type: 'Site Requirements',
+      min_population: 0,
+      max_population: null,
+      site_per_population: null,
+      base_required_sites: null,
+      event_offset_percentage: null,
+      reallocation_percentage: null,
+      is_active: true,
+    },
   })
 
-  const handleEditRule = (rule: RegulatoryRule) => {
-    setEditingRule({ ...rule })
+  // Extract data from response
+  const regulatoryRulesData = useMemo(() => {
+    if (!regulatoryRulesResponse?.data) {
+      return { docs: [], totalDocs: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false }
+    }
+    return regulatoryRulesResponse.data
+  }, [regulatoryRulesResponse])
+
+  const rules = regulatoryRulesData.docs || []
+
+  // State for edit functionality
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+
+  // Fetch single rule for editing
+  const { data: editingRuleData, isLoading: isEditingRuleLoading } = useCommunityRegulatoryRule(
+    editingRuleId || '',
+    !!editingRuleId && isEditDialogOpen
+  )
+
+  // Show success/error messages temporarily
+  const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(''), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [successMessage])
+
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(''), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [errorMessage])
+
+  // Populate edit form when rule data is loaded
+  useEffect(() => {
+    if (editingRuleData && isEditDialogOpen) {
+      const rule = editingRuleData
+      editForm.reset({
+        name: rule.name,
+        description: rule.description,
+        program: rule.program,
+        category: rule.category,
+        rule_type: rule.rule_type,
+        min_population: rule.min_population || 0,
+        max_population: rule.max_population || null,
+        site_per_population: rule.site_per_population || null,
+        base_required_sites: rule.base_required_sites || null,
+        event_offset_percentage: rule.event_offset_percentage || null,
+        reallocation_percentage: rule.reallocation_percentage || null,
+        is_active: rule.status === 'Active',
+      })
+    }
+  }, [editingRuleData, isEditDialogOpen, editForm])
+
+  const handleEditRule = (ruleId: string) => {
+    setEditingRuleId(ruleId)
     setIsEditDialogOpen(true)
   }
 
-  const handleSaveRule = async () => {
-    if (!editingRule) return
+  const handleSaveRule = async (data: any) => {
+    if (!editingRuleId) return
 
     try {
-      await api.compliance.regulatoryRules.update(editingRule.id, {
-        name: editingRule.name,
-        description: editingRule.description,
-        program: editingRule.program,
-        category: editingRule.category,
-        rule_type: editingRule.rule_type,
-        parameters: editingRule.parameters,
-        status: editingRule.status,
+      // Map form data to API format
+      const updateData: any = {
+        name: data.name,
+        description: data.description,
+        program: data.program,
+        category: data.category,
+        rule_type: data.rule_type,
+      }
+
+      // Add rule-specific parameters based on rule type
+      if (data.rule_type === 'Site Requirements') {
+        updateData.min_population = data.min_population
+        updateData.max_population = data.max_population
+        updateData.site_per_population = data.site_per_population
+        updateData.base_required_sites = data.base_required_sites
+      } else if (data.rule_type === 'Events') {
+        updateData.event_offset_percentage = data.event_offset_percentage
+      } else if (data.rule_type === 'Reallocation') {
+        updateData.reallocation_percentage = data.reallocation_percentage
+      }
+
+      // Add status
+      updateData.is_active = data.is_active
+
+      await updateMutation.mutateAsync({
+        id: editingRuleId,
+        data: updateData,
       })
 
-      setRules(rules.map((r) => (r.id === editingRule.id ? editingRule : r)))
+      setEditingRuleId(null)
       setIsEditDialogOpen(false)
-      setEditingRule(null)
-    } catch (error) {
-      console.error('[v0] Error updating rule:', error)
-      alert('Failed to update rule. Please try again.')
+      editForm.reset()
+      setSuccessMessage(`Regulatory rule "${data.name}" updated successfully`)
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Failed to update regulatory rule')
     }
   }
 
-  const handleDeleteRule = async (ruleId: string) => {
-    if (!confirm('Are you sure you want to delete this rule?')) return
+  // const handleDeleteRule = async (ruleId: string) => {
+  //   if (!confirm('Are you sure you want to delete this rule?')) return
 
-    try {
-      await api.compliance.regulatoryRules.delete(ruleId)
+  //   try {
+  //     await deleteRegulatoryRule(ruleId)
 
-      setRules(rules.filter((r) => r.id !== ruleId))
-    } catch (error) {
-      console.error('[v0] Error deleting rule:', error)
-      alert('Failed to delete rule. Please try again.')
-    }
-  }
+  //     setRules(rules.filter((r) => r.id !== ruleId))
+  //   } catch (error) {
+  //     console.error('[v0] Error deleting rule:', error)
+  //     alert('Failed to delete rule. Please try again.')
+  //   }
+  // }
 
-  const handleAddNewRule = () => {
-    setNewRule({
-      program: 'Paint',
-      category: 'HSP',
-      rule_type: 'site_calculation',
-      name: '',
-      description: '',
-      parameters: {
-        applicableGeographicTypes: ['local_municipality'],
-        minPopulation: 0,
-        maxPopulation: null,
-        roundUpPortion: true,
-      },
-      status: 'Active',
-    })
-    setIsAddDialogOpen(true)
-  }
+  const handleEditCommunity = editForm.handleSubmit(handleSaveRule)
 
-  const handleSaveNewRule = async () => {
-    if (!newRule.name || !newRule.description) {
-      alert('Please fill in all required fields (Name and Description)')
-      return
-    }
-
-    try {
-      const data = await api.compliance.regulatoryRules.create(
-        newRule as Omit<RegulatoryRule, 'id' | 'created_at' | 'updated_at'>,
-      )
-
-      if (data) {
-        setRules([...rules, data])
-        setIsAddDialogOpen(false)
-        setNewRule({
-          program: 'Paint',
-          category: 'HSP',
-          rule_type: 'site_calculation',
-          name: '',
-          description: '',
-          parameters: {},
-          status: 'Active',
-        })
-      }
-    } catch (error) {
-      console.error('[v0] Error saving new regulatory rule:', error)
-      alert('Failed to save new rule. Please try again.')
-    }
-  }
-
-  const handleNewRuleTypeChange = (ruleType: string) => {
-    let defaultParams: RuleParameters = {}
-
-    switch (ruleType) {
-      case 'site_calculation':
-        defaultParams = {
-          applicableGeographicTypes: ['local_municipality'],
-          minPopulation: 0,
-          maxPopulation: null,
-          sitesPerPopulation: 40000,
-          roundUpPortion: true,
-          formula: 'CEILING(population / sitesPerPopulation)',
-        }
-        break
-      case 'minimum_requirement':
-        defaultParams = {
-          applicableGeographicTypes: ['territorial_district'],
-          minPopulation: 1000,
-          minimumSites: 1,
-        }
-        break
-      case 'offset_event':
-        defaultParams = {
-          maxOffsetPercentage: 35,
-          applicablePrograms: ['Paint', 'Pesticides', 'Solvents', 'Lighting'],
-          description: 'Events can offset site requirements up to 35%',
-        }
-        break
-      case 'offset_adjacent':
-        defaultParams = {
-          maxOffsetPercentage: 10,
-          applicablePrograms: ['Paint', 'Pesticides', 'Solvents', 'Lighting'],
-          excludedOperatorTypes: ['Municipal', 'Regional', 'First_Nations'],
-          requiresAdjacency: true,
-          description:
-            'Adjacent community sharing up to 10%, excluding Municipal/Regional/First Nations operators',
-        }
-        break
-    }
-
-    setNewRule({
-      ...newRule,
-      rule_type: ruleType,
-      parameters: defaultParams,
-    })
-  }
 
   const renderRuleParameters = (rule: RegulatoryRule) => {
-    const params = rule.parameters as RuleParameters
-
-    if (rule.rule_type === 'site_calculation') {
+    if (rule.rule_type === 'Site Requirements') {
       return (
         <div className='space-y-1 text-sm'>
-          {params.applicableGeographicTypes && (
-            <div>
-              <span className='font-medium'>Geographic Types:</span>{' '}
-              {params.applicableGeographicTypes.join(', ')}
-            </div>
-          )}
-          {params.minPopulation !== undefined && (
+          {rule.min_population !== null && rule.min_population !== undefined && (
             <div>
               <span className='font-medium'>Min Population:</span>{' '}
-              {params.minPopulation.toLocaleString()}
+              {rule.min_population.toLocaleString()}
             </div>
           )}
-          {params.maxPopulation !== null &&
-            params.maxPopulation !== undefined && (
-              <div>
-                <span className='font-medium'>Max Population:</span>{' '}
-                {params.maxPopulation.toLocaleString()}
-              </div>
-            )}
-          {params.sitesPerPopulation && (
+          {rule.max_population !== null && rule.max_population !== undefined && (
             <div>
-              <span className='font-medium'>Sites Per:</span>{' '}
-              {params.sitesPerPopulation.toLocaleString()} people
+              <span className='font-medium'>Max Population:</span>{' '}
+              {rule.max_population.toLocaleString()}
             </div>
           )}
-          {params.baseRequirement && (
+          {rule.site_per_population && (
+            <div>
+              <span className='font-medium'>Sites Per Population:</span>{' '}
+              1 per {rule.site_per_population.toLocaleString()} people
+            </div>
+          )}
+          {rule.base_required_sites && (
             <div>
               <span className='font-medium'>Base Sites:</span>{' '}
-              {params.baseRequirement}
-            </div>
-          )}
-          {params.additionalPerPopulation && (
-            <div>
-              <span className='font-medium'>Additional Per:</span>{' '}
-              {params.additionalPerPopulation.toLocaleString()} people
-            </div>
-          )}
-          {params.formula && (
-            <div className='text-xs text-muted-foreground mt-1'>
-              <span className='font-medium'>Formula:</span> {params.formula}
+              {rule.base_required_sites}
             </div>
           )}
         </div>
       )
     }
 
-    if (rule.rule_type === 'minimum_requirement') {
+    if (rule.rule_type === 'Events') {
       return (
         <div className='space-y-1 text-sm'>
-          {params.applicableGeographicTypes && (
+          {rule.event_offset_percentage !== null && rule.event_offset_percentage !== undefined && (
             <div>
-              <span className='font-medium'>Geographic Types:</span>{' '}
-              {params.applicableGeographicTypes.join(', ')}
+              <span className='font-medium'>Event Offset:</span>{' '}
+              {rule.event_offset_percentage}%
             </div>
           )}
-          {params.minPopulation !== undefined && (
-            <div>
-              <span className='font-medium'>Min Population:</span>{' '}
-              {params.minPopulation.toLocaleString()}
-            </div>
-          )}
-          {params.minimumSites && (
-            <div>
-              <span className='font-medium'>Minimum Sites:</span>{' '}
-              {params.minimumSites}
-            </div>
-          )}
+          <div className='text-xs text-muted-foreground'>
+            Events can offset up to {rule.event_offset_percentage}% of required sites
+          </div>
         </div>
       )
     }
 
-    if (
-      rule.rule_type === 'offset_event' ||
-      rule.rule_type === 'offset_adjacent'
-    ) {
+    if (rule.rule_type === 'Reallocation') {
       return (
         <div className='space-y-1 text-sm'>
-          {params.maxOffsetPercentage !== undefined && (
+          {rule.reallocation_percentage !== null && rule.reallocation_percentage !== undefined && (
             <div>
-              <span className='font-medium'>Max Offset:</span>{' '}
-              {params.maxOffsetPercentage}%
+              <span className='font-medium'>Reallocation:</span>{' '}
+              {rule.reallocation_percentage}%
             </div>
           )}
-          {params.applicablePrograms && (
-            <div>
-              <span className='font-medium'>Programs:</span>{' '}
-              {params.applicablePrograms.join(', ')}
-            </div>
-          )}
-          {params.excludedOperatorTypes && (
-            <div>
-              <span className='font-medium'>Excluded Operators:</span>{' '}
-              {params.excludedOperatorTypes.join(', ')}
-            </div>
-          )}
-          {params.requiresAdjacency && (
-            <div className='text-xs text-muted-foreground'>
-              <CheckCircle className='inline h-3 w-3 mr-1' />
-              Requires geographic adjacency
-            </div>
-          )}
+          <div className='text-xs text-muted-foreground'>
+            Up to {rule.reallocation_percentage}% of sites can come from reallocation
+          </div>
         </div>
       )
     }
@@ -386,6 +356,12 @@ export default function RegulatoryRulesManagement({
 
   const getRuleTypeBadgeColor = (ruleType: string) => {
     switch (ruleType) {
+      case 'Site Requirements':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+      case 'Events':
+        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
+      case 'Reallocation':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300'
       case 'site_calculation':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
       case 'minimum_requirement':
@@ -400,16 +376,27 @@ export default function RegulatoryRulesManagement({
   }
 
   const ruleStats = {
-    total: rules.length,
+    total: regulatoryRulesData.totalDocs || 0,
     active: rules.filter((r) => r.status === 'Active').length,
-    siteCalculation: rules.filter((r) => r.rule_type === 'site_calculation')
-      .length,
-    offsetRules: rules.filter((r) => r.rule_type.startsWith('offset_')).length,
+    siteCalculation: rules.filter((r) => r.rule_type === 'Site Requirements').length,
+    offsetRules: rules.filter((r) => r.rule_type === 'Events' || r.rule_type === 'Reallocation').length,
     programs: new Set(rules.map((r) => r.program)).size,
   }
 
   return (
     <div className='space-y-6'>
+      {/* Success/Error Messages */}
+      {successMessage && (
+        <Alert className="bg-green-50 border-green-200">
+          <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
+        </Alert>
+      )}
+      {errorMessage && (
+        <Alert className="bg-red-50 border-red-200">
+          <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Header with Stats */}
       <div className='grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
         <Card>
@@ -472,89 +459,68 @@ export default function RegulatoryRulesManagement({
 
       {/* Main Rules Table */}
       <Card>
-        <CardHeader>
-          <div className='flex items-center justify-end'>
-            <Button onClick={handleAddNewRule} className='gap-2'>
-              <Plus className='h-4 w-4' />
-              Add Rule
-            </Button>
-          </div>
-        </CardHeader>
+        
         <CardContent>
-          {/* Filters */}
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-6'>
-            <div className='space-y-2'>
-              <Label>Filter by Program</Label>
-              <Select
-                value={selectedProgram}
-                onValueChange={setSelectedProgram}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All</SelectItem>
-                  <SelectItem value='Paint'>Paint</SelectItem>
-                  <SelectItem value='Solvents'>Solvents</SelectItem>
-                  <SelectItem value='Pesticides'>Pesticides</SelectItem>
-                  <SelectItem value='Lighting'>Lighting</SelectItem>
-                  <SelectItem value='All'>All (Offsets)</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* Search and Filters */}
+          <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 pt-3'>
+            <div className='relative'>
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search rules..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
             </div>
-            <div className='space-y-2'>
-              <Label>Filter by Category</Label>
-              <Select
-                value={selectedCategory}
-                onValueChange={setSelectedCategory}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All</SelectItem>
-                  <SelectItem value='HSP'>
-                    HSP (Hazardous & Special Products)
-                  </SelectItem>
-                  <SelectItem value='EEE'>
-                    EEE (Electrical & Electronic Equipment)
-                  </SelectItem>
-                  <SelectItem value='Offset'>Offset Rules</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='space-y-2'>
-              <Label>Filter by Rule Type</Label>
-              <Select
-                value={selectedRuleType}
-                onValueChange={setSelectedRuleType}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All</SelectItem>
-                  <SelectItem value='site_calculation'>
-                    Site Calculation
-                  </SelectItem>
-                  <SelectItem value='minimum_requirement'>
-                    Minimum Requirement
-                  </SelectItem>
-                  <SelectItem value='offset_event'>Event Offset</SelectItem>
-                  <SelectItem value='offset_adjacent'>
-                    Adjacent Community Offset
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={selectedProgram} onValueChange={setSelectedProgram}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='all'>All Programs</SelectItem>
+                <SelectItem value='Paint'>Paint</SelectItem>
+                <SelectItem value='Solvents'>Solvents</SelectItem>
+                <SelectItem value='Pesticides'>Pesticides</SelectItem>
+                <SelectItem value='Lighting'>Lighting</SelectItem>
+                <SelectItem value='All'>All (Offsets)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='all'>All Categories</SelectItem>
+                <SelectItem value='HSP'>
+                  HSP (Hazardous & Special Products)
+                </SelectItem>
+                <SelectItem value='EEE'>
+                  EEE (Electrical & Electronic Equipment)
+                </SelectItem>
+                <SelectItem value='Offset'>Offset Rules</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedRuleType} onValueChange={setSelectedRuleType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='all'>All Rule Types</SelectItem>
+                <SelectItem value='Site Requirements'>
+                  Site Requirements
+                </SelectItem>
+                <SelectItem value='Events'>Events</SelectItem>
+                <SelectItem value='Reallocation'>Reallocation</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Rules Table */}
-          {loading ? (
+          {isLoading ? (
             <div className='text-center py-8 text-muted-foreground'>
               Loading regulatory rules...
             </div>
-          ) : filteredRules.length === 0 ? (
+          ) : rules.length === 0 ? (
             <div className='text-center py-8 text-muted-foreground'>
               No rules found matching the current filters
             </div>
@@ -563,7 +529,12 @@ export default function RegulatoryRulesManagement({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Rule Name</TableHead>
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => setSortBy('name')}>
+                        Name
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
                     <TableHead>Program</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Type</TableHead>
@@ -573,7 +544,7 @@ export default function RegulatoryRulesManagement({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRules.map((rule) => (
+                  {rules.map((rule) => (
                     <TableRow key={rule.id}>
                       <TableCell>
                         <div>
@@ -616,17 +587,11 @@ export default function RegulatoryRulesManagement({
                           <Button
                             variant='ghost'
                             size='sm'
-                            onClick={() => handleEditRule(rule)}
+                            onClick={() => handleEditRule(rule.id)}
                           >
                             <Edit className='h-4 w-4' />
                           </Button>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            onClick={() => handleDeleteRule(rule.id)}
-                          >
-                            <Trash2 className='h-4 w-4' />
-                          </Button>
+                        
                         </div>
                       </TableCell>
                     </TableRow>
@@ -635,6 +600,89 @@ export default function RegulatoryRulesManagement({
               </Table>
             </div>
           )}
+
+          {/* Pagination */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Showing {rules.length} of {regulatoryRulesData.totalDocs} regulatory rules
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Show:</span>
+                <Select value={pageSize.toString()} onValueChange={(value) => setPageSize(parseInt(value))}>
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-gray-600">per page</span>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page - 1)}
+                  disabled={!regulatoryRulesData.hasPrevPage || isLoading}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+
+                {/* Page Numbers */}
+                <div className="flex items-center gap-1">
+                  {(() => {
+                    const totalPages = regulatoryRulesData.totalPages || 1
+                    const currentPage = page
+                    const maxVisiblePages = 5
+                    const halfVisible = Math.floor(maxVisiblePages / 2)
+
+                    let startPage = Math.max(1, currentPage - halfVisible)
+                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
+
+                    // Adjust start page if we're near the end
+                    if (endPage - startPage + 1 < maxVisiblePages) {
+                      startPage = Math.max(1, endPage - maxVisiblePages + 1)
+                    }
+
+                    const pages = []
+                    for (let i = startPage; i <= endPage; i++) {
+                      pages.push(
+                        <Button
+                          key={i}
+                          variant={i === currentPage ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPage(i)}
+                          disabled={isLoading}
+                          className="w-8 h-8 p-0"
+                        >
+                          {i}
+                        </Button>
+                      )
+                    }
+
+                    return pages
+                  })()}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page + 1)}
+                  disabled={!regulatoryRulesData.hasNextPage || isLoading}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -706,7 +754,13 @@ export default function RegulatoryRulesManagement({
       </Card>
 
       {/* Edit Rule Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        setIsEditDialogOpen(open)
+        if (!open) {
+          setEditingRuleId(null)
+          editForm.reset()
+        }
+      }}>
         <DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
             <DialogTitle>Edit Regulatory Rule</DialogTitle>
@@ -715,80 +769,127 @@ export default function RegulatoryRulesManagement({
             </DialogDescription>
           </DialogHeader>
 
-          {editingRule && (
-            <div className='space-y-4'>
+          {isEditingRuleLoading ? (
+            <div className='text-center py-8 text-muted-foreground'>
+              Loading rule data...
+            </div>
+          ) : (
+            <form onSubmit={handleEditCommunity} className="space-y-4">
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
                 <div className='space-y-2'>
-                  <Label htmlFor='edit-name'>Rule Name</Label>
+                  <Label htmlFor='edit-name'>Rule Name *</Label>
                   <Input
                     id='edit-name'
-                    value={editingRule.name}
-                    onChange={(e) =>
-                      setEditingRule({ ...editingRule, name: e.target.value })
-                    }
+                    {...editForm.register('name')}
+                    className={editForm.formState.errors.name ? 'border-red-500' : ''}
                   />
+                  {editForm.formState.errors.name && (
+                    <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.name.message}</p>
+                  )}
                 </div>
                 <div className='space-y-2'>
                   <Label htmlFor='edit-program'>Program</Label>
-                  <Select
-                    value={editingRule.program}
-                    onValueChange={(value) =>
-                      setEditingRule({ ...editingRule, program: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='Paint'>Paint</SelectItem>
-                      <SelectItem value='Solvents'>Solvents</SelectItem>
-                      <SelectItem value='Pesticides'>Pesticides</SelectItem>
-                      <SelectItem value='Lighting'>Lighting</SelectItem>
-                      <SelectItem value='All'>All</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Controller
+                    name="program"
+                    control={editForm.control}
+                    render={({ field }: any) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='Paint'>Paint</SelectItem>
+                          <SelectItem value='Solvents'>Solvents</SelectItem>
+                          <SelectItem value='Pesticides'>Pesticides</SelectItem>
+                          <SelectItem value='Lighting'>Lighting</SelectItem>
+                          <SelectItem value='All'>All</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+              </div>
+
+              <div className='grid grid-cols-2 gap-4'>
+                <div className='space-y-2'>
+                  <Label htmlFor='edit-category'>Category</Label>
+                  <Controller
+                    name="category"
+                    control={editForm.control}
+                    render={({ field }: any) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='HSP'>
+                            HSP (Hazardous & Special Products)
+                          </SelectItem>
+                          <SelectItem value='EEE'>
+                            EEE (Electrical & Electronic Equipment)
+                          </SelectItem>
+                          <SelectItem value='Offset'>Offset</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+                <div className='space-y-2'>
+                  <Label htmlFor='edit-rule-type'>Rule Type</Label>
+                  <Controller
+                    name="rule_type"
+                    control={editForm.control}
+                    render={({ field }: any) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='Site Requirements'>
+                            Site Requirements
+                          </SelectItem>
+                          <SelectItem value='Events'>Events</SelectItem>
+                          <SelectItem value='Reallocation'>Reallocation</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 </div>
               </div>
 
               <div className='space-y-2'>
-                <Label htmlFor='edit-description'>Description</Label>
+                <Label htmlFor='edit-description'>Description *</Label>
                 <Textarea
                   id='edit-description'
-                  value={editingRule.description}
-                  onChange={(e) =>
-                    setEditingRule({
-                      ...editingRule,
-                      description: e.target.value,
-                    })
-                  }
+                  {...editForm.register('description')}
                   rows={2}
+                  className={editForm.formState.errors.description ? 'border-red-500' : ''}
                 />
+                {editForm.formState.errors.description && (
+                  <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.description.message}</p>
+                )}
               </div>
 
               {/* Dynamic parameter fields based on rule type */}
               <div className='space-y-4 border-t pt-4'>
                 <h4 className='font-semibold'>Rule Parameters</h4>
 
-                {editingRule.rule_type === 'site_calculation' && (
+                {editForm.watch('rule_type') === 'Site Requirements' && (
                   <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
                     <div className='space-y-2'>
                       <Label>Minimum Population</Label>
                       <Input
                         type='number'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .minPopulation || 0
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              minPopulation:
-                                Number.parseInt(e.target.value) || 0,
-                            },
-                          })
-                        }
+                        {...editForm.register('min_population')}
                       />
                     </div>
                     <div className='space-y-2'>
@@ -797,21 +898,7 @@ export default function RegulatoryRulesManagement({
                       </Label>
                       <Input
                         type='number'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .maxPopulation || ''
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              maxPopulation: e.target.value
-                                ? Number.parseInt(e.target.value)
-                                : null,
-                            },
-                          })
-                        }
+                        {...editForm.register('max_population')}
                         placeholder='Unlimited'
                       />
                     </div>
@@ -819,112 +906,20 @@ export default function RegulatoryRulesManagement({
                       <Label>Sites Per Population</Label>
                       <Input
                         type='number'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .sitesPerPopulation || ''
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              sitesPerPopulation:
-                                Number.parseInt(e.target.value) || undefined,
-                            },
-                          })
-                        }
+                        {...editForm.register('site_per_population')}
                       />
                     </div>
                     <div className='space-y-2'>
                       <Label>Base Requirement</Label>
                       <Input
                         type='number'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .baseRequirement || ''
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              baseRequirement:
-                                Number.parseInt(e.target.value) || undefined,
-                            },
-                          })
-                        }
-                      />
-                    </div>
-                    <div className='space-y-2'>
-                      <Label>Additional Per Population</Label>
-                      <Input
-                        type='number'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .additionalPerPopulation || ''
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              additionalPerPopulation:
-                                Number.parseInt(e.target.value) || undefined,
-                            },
-                          })
-                        }
+                        {...editForm.register('base_required_sites')}
                       />
                     </div>
                   </div>
                 )}
 
-                {editingRule.rule_type === 'minimum_requirement' && (
-                  <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-                    <div className='space-y-2'>
-                      <Label>Minimum Population</Label>
-                      <Input
-                        type='number'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .minPopulation || 0
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              minPopulation:
-                                Number.parseInt(e.target.value) || 0,
-                            },
-                          })
-                        }
-                      />
-                    </div>
-                    <div className='space-y-2'>
-                      <Label>Minimum Sites Required</Label>
-                      <Input
-                        type='number'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .minimumSites || 1
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              minimumSites:
-                                Number.parseInt(e.target.value) || 1,
-                            },
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {(editingRule.rule_type === 'offset_event' ||
-                  editingRule.rule_type === 'offset_adjacent') && (
+                {editForm.watch('rule_type') === 'Events' && (
                   <div className='space-y-4'>
                     <div className='space-y-2'>
                       <Label>Maximum Offset Percentage</Label>
@@ -932,20 +927,21 @@ export default function RegulatoryRulesManagement({
                         type='number'
                         min='0'
                         max='100'
-                        value={
-                          (editingRule.parameters as RuleParameters)
-                            .maxOffsetPercentage || 0
-                        }
-                        onChange={(e) =>
-                          setEditingRule({
-                            ...editingRule,
-                            parameters: {
-                              ...editingRule.parameters,
-                              maxOffsetPercentage:
-                                Number.parseInt(e.target.value) || 0,
-                            },
-                          })
-                        }
+                        {...editForm.register('event_offset_percentage')}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {editForm.watch('rule_type') === 'Reallocation' && (
+                  <div className='space-y-4'>
+                    <div className='space-y-2'>
+                      <Label>Maximum Offset Percentage</Label>
+                      <Input
+                        type='number'
+                        min='0'
+                        max='100'
+                        {...editForm.register('reallocation_percentage')}
                       />
                     </div>
                   </div>
@@ -953,325 +949,32 @@ export default function RegulatoryRulesManagement({
               </div>
 
               <div className='flex items-center space-x-2'>
-                <Switch
+                <input
+                  type="checkbox"
                   id='edit-active'
-                  checked={editingRule.status === 'Active'}
-                  onCheckedChange={(checked) =>
-                    setEditingRule({
-                      ...editingRule,
-                      status: checked ? 'Active' : 'Inactive',
-                    })
-                  }
+                  {...editForm.register('is_active')}
+                  className="rounded border-gray-300"
                 />
                 <Label htmlFor='edit-active'>Rule is active</Label>
               </div>
-            </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsEditDialogOpen(false)
+                  setEditingRuleId(null)
+                  editForm.reset()
+                }}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </DialogFooter>
+            </form>
           )}
-
-          <DialogFooter>
-            <Button
-              variant='outline'
-              onClick={() => setIsEditDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSaveRule}>Save Changes</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Add New Rule Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
-          <DialogHeader>
-            <DialogTitle>Add New Regulatory Rule</DialogTitle>
-            <DialogDescription>
-              Create a new rule for site calculations, minimums, or offsets
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className='space-y-4'>
-            <div className='grid grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <Label htmlFor='new-name'>Rule Name *</Label>
-                <Input
-                  id='new-name'
-                  value={newRule.name}
-                  onChange={(e) =>
-                    setNewRule({ ...newRule, name: e.target.value })
-                  }
-                  placeholder='e.g., Paint - Local Municipality (5K-500K)'
-                />
-              </div>
-              <div className='space-y-2'>
-                <Label htmlFor='new-program'>Program</Label>
-                <Select
-                  value={newRule.program}
-                  onValueChange={(value) =>
-                    setNewRule({ ...newRule, program: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='Paint'>Paint</SelectItem>
-                    <SelectItem value='Solvents'>Solvents</SelectItem>
-                    <SelectItem value='Pesticides'>Pesticides</SelectItem>
-                    <SelectItem value='Lighting'>Lighting</SelectItem>
-                    <SelectItem value='All'>All (for offsets)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className='grid grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <Label htmlFor='new-category'>Category</Label>
-                <Select
-                  value={newRule.category}
-                  onValueChange={(value) =>
-                    setNewRule({ ...newRule, category: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='HSP'>
-                      HSP (Hazardous & Special Products)
-                    </SelectItem>
-                    <SelectItem value='EEE'>
-                      EEE (Electrical & Electronic Equipment)
-                    </SelectItem>
-                    <SelectItem value='Offset'>Offset</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='space-y-2'>
-                <Label htmlFor='new-rule-type'>Rule Type</Label>
-                <Select
-                  value={newRule.rule_type}
-                  onValueChange={handleNewRuleTypeChange}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='site_calculation'>
-                      Site Calculation
-                    </SelectItem>
-                    <SelectItem value='minimum_requirement'>
-                      Minimum Requirement
-                    </SelectItem>
-                    <SelectItem value='offset_event'>
-                      Event Offset (35%)
-                    </SelectItem>
-                    <SelectItem value='offset_adjacent'>
-                      Adjacent Community Offset (10%)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className='space-y-2'>
-              <Label htmlFor='new-description'>Description *</Label>
-              <Textarea
-                id='new-description'
-                value={newRule.description}
-                onChange={(e) =>
-                  setNewRule({ ...newRule, description: e.target.value })
-                }
-                rows={2}
-                placeholder='Describe the rule and its purpose'
-              />
-            </div>
-
-            {/* Dynamic parameter fields based on selected rule type */}
-            <div className='space-y-4 border-t pt-4'>
-              <h4 className='font-semibold'>Rule Parameters</h4>
-
-              {newRule.rule_type === 'site_calculation' && (
-                <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-                  <div className='space-y-2'>
-                    <Label>Minimum Population</Label>
-                    <Input
-                      type='number'
-                      value={
-                        (newRule.parameters as RuleParameters)?.minPopulation ||
-                        0
-                      }
-                      onChange={(e) =>
-                        setNewRule({
-                          ...newRule,
-                          parameters: {
-                            ...newRule.parameters,
-                            minPopulation: Number.parseInt(e.target.value) || 0,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className='space-y-2'>
-                    <Label>
-                      Maximum Population (leave empty for unlimited)
-                    </Label>
-                    <Input
-                      type='number'
-                      value={
-                        (newRule.parameters as RuleParameters)?.maxPopulation ||
-                        ''
-                      }
-                      onChange={(e) =>
-                        setNewRule({
-                          ...newRule,
-                          parameters: {
-                            ...newRule.parameters,
-                            maxPopulation: e.target.value
-                              ? Number.parseInt(e.target.value)
-                              : null,
-                          },
-                        })
-                      }
-                      placeholder='Unlimited'
-                    />
-                  </div>
-                  <div className='space-y-2'>
-                    <Label>Sites Per Population</Label>
-                    <Input
-                      type='number'
-                      value={
-                        (newRule.parameters as RuleParameters)
-                          ?.sitesPerPopulation || ''
-                      }
-                      onChange={(e) =>
-                        setNewRule({
-                          ...newRule,
-                          parameters: {
-                            ...newRule.parameters,
-                            sitesPerPopulation:
-                              Number.parseInt(e.target.value) || undefined,
-                          },
-                        })
-                      }
-                      placeholder='e.g., 40000 for Paint'
-                    />
-                  </div>
-                  <div className='space-y-2'>
-                    <Label>Base Requirement (optional)</Label>
-                    <Input
-                      type='number'
-                      value={
-                        (newRule.parameters as RuleParameters)
-                          ?.baseRequirement || ''
-                      }
-                      onChange={(e) =>
-                        setNewRule({
-                          ...newRule,
-                          parameters: {
-                            ...newRule.parameters,
-                            baseRequirement:
-                              Number.parseInt(e.target.value) || undefined,
-                          },
-                        })
-                      }
-                      placeholder='e.g., 13 for &gt;500K'
-                    />
-                  </div>
-                </div>
-              )}
-
-              {newRule.rule_type === 'minimum_requirement' && (
-                <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-                  <div className='space-y-2'>
-                    <Label>Minimum Population</Label>
-                    <Input
-                      type='number'
-                      value={
-                        (newRule.parameters as RuleParameters)?.minPopulation ||
-                        1000
-                      }
-                      onChange={(e) =>
-                        setNewRule({
-                          ...newRule,
-                          parameters: {
-                            ...newRule.parameters,
-                            minPopulation:
-                              Number.parseInt(e.target.value) || 1000,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className='space-y-2'>
-                    <Label>Minimum Sites Required</Label>
-                    <Input
-                      type='number'
-                      value={
-                        (newRule.parameters as RuleParameters)?.minimumSites ||
-                        1
-                      }
-                      onChange={(e) =>
-                        setNewRule({
-                          ...newRule,
-                          parameters: {
-                            ...newRule.parameters,
-                            minimumSites: Number.parseInt(e.target.value) || 1,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              {(newRule.rule_type === 'offset_event' ||
-                newRule.rule_type === 'offset_adjacent') && (
-                <div className='space-y-4'>
-                  <div className='space-y-2'>
-                    <Label>Maximum Offset Percentage</Label>
-                    <Input
-                      type='number'
-                      min='0'
-                      max='100'
-                      value={
-                        (newRule.parameters as RuleParameters)
-                          ?.maxOffsetPercentage || 0
-                      }
-                      onChange={(e) =>
-                        setNewRule({
-                          ...newRule,
-                          parameters: {
-                            ...newRule.parameters,
-                            maxOffsetPercentage:
-                              Number.parseInt(e.target.value) || 0,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  <Alert>
-                    <Info className='h-4 w-4' />
-                    <AlertDescription>
-                      {newRule.rule_type === 'offset_event'
-                        ? 'Event offsets allow temporary collection events to count toward site requirements up to 35%'
-                        : 'Adjacent community offsets allow sharing surplus sites with neighboring communities up to 10%, excluding Municipal/Regional/First Nations operators'}
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant='outline' onClick={() => setIsAddDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveNewRule}>Create Rule</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

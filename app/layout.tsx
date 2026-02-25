@@ -1,6 +1,8 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 import localFont from "next/font/local"
+import { QueryProvider } from "@/providers/query-provider"
+import { AuthGuard } from "@/components/auth-guard"
 import "./globals.css"
 
 const inter = localFont({
@@ -50,7 +52,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${inter.className} antialiased h-full`}>{children}</body>
+      <body className={`${inter.className} antialiased h-full`}>
+        <QueryProvider>
+          <AuthGuard>{children}</AuthGuard>
+        </QueryProvider>
+      </body>
     </html>
   )
 }

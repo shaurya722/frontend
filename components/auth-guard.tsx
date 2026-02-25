@@ -1,58 +1,39 @@
-"use client"
+'use client'
 
-import type React from "react"
+import { useEffect, useState } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
+import { isProtectedRoute, isPublicRoute, defaultPublicRoute, defaultProtectedRoute } from '@/lib/route-config'
 
-import { useEffect, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
-
-interface User {
-  username: string
-  name: string
-  role: string
-  loginTime: string
-}
-
-interface AuthGuardProps {
-  children: React.ReactNode
-}
-
-export default function AuthGuard({ children }: AuthGuardProps) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
+  const [isChecking, setIsChecking] = useState(true)
 
   useEffect(() => {
     const checkAuth = () => {
-      try {
-        console.log("[v0] AuthGuard checking authentication for:", pathname)
-        const userData = localStorage.getItem("user")
+      const userData = localStorage.getItem('user')
+      const isAuthenticated = !!userData
 
-        if (userData) {
-          const parsedUser = JSON.parse(userData)
-          console.log("[v0] User found:", parsedUser.username, "Role:", parsedUser.role)
-          setUser(parsedUser)
-        } else {
-          console.log("[v0] No user session found")
-          if (pathname !== "/login" && pathname !== "/") {
-            console.log("[v0] Redirecting to login")
-            router.push("/login")
-          }
-        }
-      } catch (error) {
-        console.error("[v0] Auth check error:", error)
-        if (pathname !== "/login" && pathname !== "/") {
-          router.push("/login")
-        }
-      } finally {
-        setIsLoading(false)
+      // If user is authenticated and on a public route, redirect to protected route
+      if (isAuthenticated && isPublicRoute(pathname)) {
+        window.location.href = defaultProtectedRoute
+        return
       }
+
+      // If user is not authenticated and on a protected route, redirect to login
+      if (!isAuthenticated && isProtectedRoute(pathname)) {
+        window.location.href = defaultPublicRoute
+        return
+      }
+
+      setIsChecking(false)
     }
 
     checkAuth()
   }, [pathname, router])
 
-  if (isLoading) {
+  // Show loading state while checking authentication
+  if (isChecking && (isProtectedRoute(pathname) || isPublicRoute(pathname))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -61,10 +42,6 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         </div>
       </div>
     )
-  }
-
-  if (!user && pathname !== "/login" && pathname !== "/") {
-    return null
   }
 
   return <>{children}</>

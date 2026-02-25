@@ -1,6 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import type React from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useForm } from 'react-hook-form'
+import { yupResolver } from '@hookform/resolvers/yup'
+import * as yup from 'yup'
+
 import {
   Card,
   CardContent,
@@ -10,6 +15,7 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { YearPicker } from '@/components/ui/year-picker'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -41,20 +47,25 @@ import {
   Search,
   Edit,
   Trash2,
-  Upload,
-  CheckCircle,
-  AlertTriangle,
   Plus,
-  ChevronUp,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ArrowUpDown,
 } from 'lucide-react'
-import type { Municipality } from '@/lib/supabase'
-import { getMunicipalities } from '@/lib/sites'
-import * as api from '@/lib/api'
-import { bulkImportMunicipalities } from '@/lib/api'
+
+import { useCommunities, useCreateCommunity, useUpdateCommunity, useDeleteCommunity, useCommunity } from '@/features/communities'
+import { useRegions } from '@/features/regions'
+import type { Community } from '@/features/communities'
+
+// Validation schema
+const communitySchema = yup.object().shape({
+  name: yup.string().required('Community name is required').min(2, 'Name must be at least 2 characters'),
+  population: yup.number().required('Population is required').min(1, 'Population must be at least 1').max(10000000, 'Population cannot exceed 10 million'),
+  tier: yup.string().required('Tier is required').oneOf(['Single', 'Lower', 'Upper'], 'Invalid tier selected'),
+  province: yup.string().required('Province is required'),
+  region: yup.string().required('Region is required'),
+  census_year: yup.number().required('Census year is required').min(1900, 'Year must be 1900 or later').max(new Date().getFullYear() + 10, 'Year cannot be too far in the future'),
+})
 
 interface UserData {
   username: string
@@ -62,142 +73,239 @@ interface UserData {
   role: string
 }
 
+interface Region {
+  id: string
+  name: string
+  zone_id: string
+  zone_name: string
+}
+
+// Edit Community Form Component
+function EditCommunityForm({
+  community,
+  regions,
+  onSubmit,
+  loading,
+  onCancel
+}: {
+  community: Community
+  regions: Region[]
+  onSubmit: (data: any) => void
+  loading: boolean
+  onCancel: () => void
+}) {
+  const editForm = useForm({
+    resolver: yupResolver(communitySchema),
+    defaultValues: {
+      name: community.name,
+      population: community.population || 0,
+      tier: community.tier || 'Single',
+      province: community.province || 'Ontario',
+      region: community.region_detail?.id || '',
+      census_year: community.census_year || 2021,
+    },
+  })
+
+  const handleFormSubmit = (data: any) => {
+    onSubmit(data)
+  }
+
+  return (
+    <form onSubmit={editForm.handleSubmit(handleFormSubmit)} className="space-y-4">
+      <div>
+        <Label htmlFor="edit-name">Name</Label>
+        <Input
+          id="edit-name"
+          className={editForm.formState.errors.name ? 'border-red-500' : ''}
+          {...editForm.register('name')}
+        />
+        {editForm.formState.errors.name && (
+          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.name.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor="edit-population">Population</Label>
+        <Input
+          id="edit-population"
+          type="number"
+          className={editForm.formState.errors.population ? 'border-red-500' : ''}
+          {...editForm.register('population')}
+        />
+        {editForm.formState.errors.population && (
+          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.population.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor="edit-tier">Tier</Label>
+        <Select
+          value={editForm.watch('tier')}
+          onValueChange={(value) => editForm.setValue('tier', value as 'Single' | 'Lower' | 'Upper')}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Upper">Upper Tier</SelectItem>
+            <SelectItem value="Lower">Lower Tier</SelectItem>
+            <SelectItem value="Single">Single Tier</SelectItem>
+          </SelectContent>
+        </Select>
+        {editForm.formState.errors.tier && (
+          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.tier.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor="edit-region">Region</Label>
+        <Select
+          value={editForm.watch('region')}
+          onValueChange={(value) => editForm.setValue('region', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select region" />
+          </SelectTrigger>
+          <SelectContent>
+            {regions.map((region) => (
+              <SelectItem key={region.id} value={region.id}>
+                {region.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {editForm.formState.errors.region && (
+          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.region.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor="edit-province">Province</Label>
+        <Input
+          id="edit-province"
+          className={editForm.formState.errors.province ? 'border-red-500' : ''}
+          {...editForm.register('province')}
+        />
+        {editForm.formState.errors.province && (
+          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.province.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor="edit-census-year">Census Year</Label>
+        <YearPicker
+          value={editForm.watch('census_year')}
+          onChange={(year) => editForm.setValue('census_year', year)}
+          placeholder="Select census year"
+        />
+        {editForm.formState.errors.census_year && (
+          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.census_year.message}</p>
+        )}
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={loading}>
+          {loading ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+}
+
 export default function CommunitiesManagement() {
-  const [communitiesData, setCommunitiesData] = useState<{
-    count: number
-    next: string | null
-    previous: string | null
-    results: Municipality[]
-  }>({ count: 0, next: null, previous: null, results: [] })
-  const [loading, setLoading] = useState(true)
+  // Search and filter state
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [tierFilter, setTierFilter] = useState<string>('all')
   const [regionFilter, setRegionFilter] = useState<string>('all')
+  const [provinceFilter, setProvinceFilter] = useState<string>('all')
   const [censusYearFilter, setCensusYearFilter] = useState<string>('all')
+  
+  // Pagination state
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalCount, setTotalCount] = useState(0)
-  const [ordering, setOrdering] = useState('name')
-  const [editingCommunity, setEditingCommunity] = useState<Municipality | null>(
-    null,
-  )
+  
+  // Sort state
+  const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
+  const [sortBy, setSortBy] = useState('created_at')
+  
+  // Dialog state
+  const [editingCommunity, setEditingCommunity] = useState<Community | null>(null)
+  const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [communityToDelete, setCommunityToDelete] =
-    useState<Municipality | null>(null)
-  const [isBulkImportDialogOpen, setIsBulkImportDialogOpen] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [bulkImportResult, setBulkImportResult] = useState<any>(null)
-  const [currentUser, setCurrentUser] = useState<UserData | null>(null)
-  const [editForm, setEditForm] = useState({
-    name: '',
-    population: 0,
-    tier: 'Single' as 'Single' | 'Lower' | 'Upper',
-    region: '',
-    province: 'Ontario',
-    census_year: 2021,
+  const [communityToDelete, setCommunityToDelete] = useState<Community | null>(null)
+  
+  // Form state - Remove old state management
+  // const [editForm, setEditForm] = useState({...})
+  // const [newCommunityForm, setNewCommunityForm] = useState({...})
+  
+  // React Hook Form setup
+  const createForm = useForm({
+    resolver: yupResolver(communitySchema),
+    defaultValues: {
+      name: '',
+      population: 0,
+      tier: 'Single' as 'Single' | 'Lower' | 'Upper',
+      province: 'Ontario',
+      region: '',
+      census_year: new Date().getFullYear(),
+    },
   })
-  const [newCommunityForm, setNewCommunityForm] = useState({
-    name: '',
-    population: 0,
-    tier: 'Single' as 'Single' | 'Lower' | 'Upper',
-    region: '',
-    province: 'Ontario',
-    census_year: 2021,
-  })
+  
+  // UI state
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
-
-  const isAdmin = currentUser?.role === 'Administrator'
+  // const [regions, setRegions] = useState<Region[]>([])
 
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery)
-      setPage(1) // Reset to first page on search
+      setPage(1)
     }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Fetch data from backend API
-  const fetchCommunities = useCallback(async () => {
-    setLoading(true)
-    try {
-      const filters: any = {
-        search: debouncedSearch || undefined,
-        tier: tierFilter !== 'all' ? tierFilter : undefined,
-        region: regionFilter !== 'all' ? regionFilter : undefined,
-        census_year: censusYearFilter !== 'all' ? censusYearFilter : undefined,
-        ordering,
-        page,
-        page_size: pageSize,
-      }
-      const data = await getMunicipalities(filters)
-      setCommunitiesData({
-        count: data.count,
-        next: data.next,
-        previous: data.previous,
-        results: data.results.map((apiMunicipality) => ({
-          id: apiMunicipality.id,
-          name: apiMunicipality.name,
-          population: apiMunicipality.population,
-          tier: apiMunicipality.tier,
-          region: apiMunicipality.region,
-          province: apiMunicipality.province,
-          census_year: apiMunicipality.census_year,
-          created_at: apiMunicipality.created_at,
-          updated_at: apiMunicipality.updated_at,
-        })),
-      })
-      setTotalPages(Math.ceil(data.count / pageSize))
-      setTotalCount(data.count)
-    } catch (error) {
-      console.error('Error fetching communities:', error)
-      setErrorMessage('Failed to fetch communities')
-    } finally {
-      setLoading(false)
-    }
-  }, [
-    debouncedSearch,
-    tierFilter,
-    regionFilter,
-    censusYearFilter,
-    ordering,
-    page,
-    pageSize,
-  ])
+  // Build query params for React Query
+  const queryParams = useMemo(() => {
+    const filters: any = {}
+    if (tierFilter !== 'all') filters.tier = tierFilter
+    if (regionFilter !== 'all') filters.region = regionFilter
+    if (provinceFilter !== 'all') filters.province = provinceFilter
+    if (censusYearFilter !== 'all') filters.census_year = parseInt(censusYearFilter)
 
-  const handleSort = (field: string) => {
-    if (ordering === field) {
-      setOrdering(`-${field}`)
-    } else {
-      setOrdering(field)
+    return {
+      page,
+      limit: pageSize,
+      search: debouncedSearch || undefined,
+      searchFields: ['name', 'province'], // Search in name and province fields
+      filters: Object.keys(filters).length > 0 ? filters : undefined,
+      sort: sortOrder,
+      sortBy,
     }
-  }
+  }, [page, pageSize, debouncedSearch, tierFilter, regionFilter, provinceFilter, censusYearFilter, sortOrder, sortBy])
 
-  useEffect(() => {
-    // Get current user from localStorage
-    const userData = localStorage.getItem('user')
-    if (userData) {
-      setCurrentUser(JSON.parse(userData))
+  // Fetch communities using React Query
+  const { data: communitiesResponse, isLoading, error, refetch } = useCommunities(queryParams)
+
+  // Fetch regions using React Query hook
+  const { data: regionsData, isLoading: regionsLoading, error: regionsError } = useRegions()
+
+  // Fetch single community for editing
+  const { data: editingCommunityData, isLoading: editingCommunityLoading, error: editingCommunityError } = useCommunity(editingCommunityId || '', !!editingCommunityId)
+
+  // Mutations
+  const createMutation = useCreateCommunity()
+  const updateMutation = useUpdateCommunity()
+  const deleteMutation = useDeleteCommunity()
+
+  // Extract data from response
+  const communitiesData = useMemo(() => {
+    if (!communitiesResponse?.data) {
+      return { docs: [], totalDocs: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false }
     }
-    fetchCommunities()
-  }, [])
+    return communitiesResponse.data
+  }, [communitiesResponse])
 
-  // Refetch when filters or sort change
-  useEffect(() => {
-    fetchCommunities()
-  }, [
-    tierFilter,
-    regionFilter,
-    censusYearFilter,
-    ordering,
-    page,
-    pageSize,
-    debouncedSearch,
-  ])
+  const communities = communitiesData.docs || []
 
   // Show success/error messages temporarily
   useEffect(() => {
@@ -214,55 +322,60 @@ export default function CommunitiesManagement() {
     }
   }, [errorMessage])
 
-  const handleEditCommunity = (community: Municipality) => {
-    setEditingCommunity(community)
-    setEditForm({
-      name: community.name,
-      population: community.population,
-      tier: community.tier,
-      region: community.region,
-      province: community.province || 'Ontario',
-      census_year: community.census_year || 2021,
-    })
-  }
+  // Get current user from localStorage
+  useEffect(() => {
+    const userData = localStorage.getItem('user')
+    if (userData) {
+    }
+  }, [])
 
-  const handleSaveEdit = async () => {
-    if (!editingCommunity) return
-
-    try {
-      const response = await api.updateMunicipality(editingCommunity.id, {
-        name: editForm.name,
-        population: editForm.population,
-        tier: editForm.tier,
-        region: editForm.region,
-        province: editForm.province,
-        census_year: editForm.census_year,
-      })
-
-      if (response.error) throw new Error(response.error)
-
-      // Update local state
-      const updatedCommunity: Municipality = {
-        ...editingCommunity,
-        name: editForm.name,
-        population: editForm.population,
-        tier: editForm.tier,
-        region: editForm.region,
-        province: editForm.province,
-        census_year: editForm.census_year,
-        updated_at: new Date().toISOString(),
-      }
-      // Instead of local update, refetch to handle pagination
-      await fetchCommunities()
-      setEditingCommunity(null)
-      setSuccessMessage(`Community "${editForm.name}" updated successfully`)
-    } catch (error: any) {
-      console.error('Error updating community:', error)
-      setErrorMessage(error?.message || 'Failed to update community')
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 1 ? -1 : 1)
+    } else {
+      setSortBy(field)
+      setSortOrder(-1)
     }
   }
 
-  const handleDeleteCommunity = (community: Municipality) => {
+  const handleEditCommunity = (community: Community) => {
+    setEditingCommunityId(community.id.toString())
+    setEditingCommunity(community) // Keep for fallback if API fails
+  }
+
+  const onSubmitEdit = async (data: any) => {
+    if (!editingCommunity) return
+
+    try {
+      // Transform data to match API format
+      const apiData = {
+        name: data.name,
+        population: data.population,
+        tier: data.tier,
+        region: data.region,
+        province: data.province,
+        census_year: data.census_year,
+      }
+
+      await updateMutation.mutateAsync({
+        id: editingCommunity.id.toString(),
+        data: apiData,
+      })
+
+      setEditingCommunityId(null)
+      setEditingCommunity(null)
+      setSuccessMessage(`Community "${data.name}" updated successfully`)
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Failed to update community')
+    }
+  }
+
+  // This will be called by the EditCommunityForm component
+  const handleSaveEdit = (data: any) => {
+    onSubmitEdit(data)
+  }
+
+  const handleDeleteCommunity = (community: Community) => {
     setCommunityToDelete(community)
     setIsDeleteDialogOpen(true)
   }
@@ -271,696 +384,428 @@ export default function CommunitiesManagement() {
     if (!communityToDelete) return
 
     try {
-      const response = await api.deleteMunicipality(communityToDelete.id)
-      if (response.error) throw new Error(response.error)
-
-      // Refetch to handle pagination
-      await fetchCommunities()
-      setSuccessMessage(
-        `Community "${communityToDelete.name}" deleted successfully`,
-      )
-    } catch (error: any) {
-      console.error('Error deleting community:', error)
-      setErrorMessage(
-        error?.message ||
-          'Failed to delete community. It may be referenced by collection sites.',
-      )
-    } finally {
+      await deleteMutation.mutateAsync(communityToDelete.id.toString())
+      setSuccessMessage(`Community "${communityToDelete.name}" deleted successfully`)
       setIsDeleteDialogOpen(false)
       setCommunityToDelete(null)
-    }
-  }
-
-  const handleBulkImport = async () => {
-    if (!selectedFile) {
-      setErrorMessage('Please select a CSV file')
-      return
-    }
-
-    try {
-      const response = await bulkImportMunicipalities(selectedFile)
-      if (response.error) {
-        setErrorMessage(response.error)
-        return
-      }
-
-      setBulkImportResult(response.data)
-      setIsBulkImportDialogOpen(false)
-      setSelectedFile(null)
-
-      // Refresh the data to show new municipalities
-      await fetchCommunities()
-
-      if (response.data.success) {
-        setSuccessMessage(
-          `Successfully imported ${response.data.created} municipalities. ${response.data.duplicates} duplicates skipped.`,
-        )
-      }
     } catch (error: any) {
-      console.error('Error bulk importing:', error)
-      setErrorMessage(error?.message || 'Failed to import municipalities')
+      setErrorMessage(error.message || 'Failed to delete community')
     }
   }
 
-  const handleAddCommunity = async () => {
-    if (!newCommunityForm.name.trim()) {
-      setErrorMessage('Community name is required')
-      return
-    }
-
+  const onSubmitCreate = async (data: any) => {
     try {
-      const response = await api.createMunicipality({
-        name: newCommunityForm.name,
-        population: newCommunityForm.population,
-        tier: newCommunityForm.tier,
-        region: newCommunityForm.region,
-        province: newCommunityForm.province,
-        census_year: newCommunityForm.census_year,
-      })
-
-      if (response.error) throw new Error(response.error)
-
-      const data: Municipality = {
-        id: response.data?.id || crypto.randomUUID(),
-        name: newCommunityForm.name,
-        population: newCommunityForm.population,
-        tier: newCommunityForm.tier,
-        region: newCommunityForm.region,
-        province: newCommunityForm.province,
-        census_year: newCommunityForm.census_year,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+      // Transform data to match API format
+      const apiData = {
+        name: data.name,
+        population: data.population,
+        tier: data.tier,
+        region: data.region,
+        province: data.province,
+        census_year: data.census_year,
       }
 
-      // Instead of local update, refetch to handle pagination
-      await fetchCommunities()
+      await createMutation.mutateAsync(apiData)
+
       setIsAddDialogOpen(false)
-      setNewCommunityForm({
-        name: '',
-        population: 0,
-        tier: 'Single',
-        region: '',
-        province: 'Ontario',
-        census_year: 2021,
-      })
-      setSuccessMessage(
-        `Community "${newCommunityForm.name}" added successfully`,
-      )
+      createForm.reset()
+      setSuccessMessage(`Community "${data.name}" added successfully`)
     } catch (error: any) {
-      console.error('Error adding community:', error)
-      setErrorMessage(error?.message || 'Failed to add community')
+      setErrorMessage(error.message || 'Failed to add community')
     }
   }
 
-  // Get unique values for filters
-  const uniqueTiers = Array.from(
-    new Set(communitiesData.results.map((c) => c.tier)),
-  ).sort()
-  const uniqueRegions = Array.from(
-    new Set(communitiesData.results.map((c) => c.region).filter(Boolean)),
-  ).sort()
-  const uniqueCensusYears = Array.from(
-    new Set(
-      communitiesData.results.map((c) => c.census_year || 2021).filter(Boolean),
-    ),
-  ).sort((a, b) => b - a)
+  const handleAddCommunity = createForm.handleSubmit(onSubmitCreate)
 
-  const getTierBadge = (tier: string) => {
-    const colors: Record<string, string> = {
-      Single: 'bg-blue-100 text-blue-800',
-      Lower: 'bg-green-100 text-green-800',
-      Upper: 'bg-purple-100 text-purple-800',
+  const getTierBadgeColor = (tier?: string) => {
+    switch (tier) {
+      case 'Upper':
+        return 'bg-blue-100 text-blue-800'
+      case 'Lower':
+        return 'bg-green-100 text-green-800'
+      case 'Single':
+        return 'bg-purple-100 text-purple-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
     }
-    return colors[tier] || 'bg-gray-100 text-gray-800'
-  }
-
-  const getSortIcon = (field: string) => {
-    if (ordering === field) return '↑'
-    if (ordering === `-${field}`) return '↓'
-    return ''
   }
 
   return (
-    <div className='space-y-6'>
+    <div className="space-y-6">
       {/* Success/Error Messages */}
       {successMessage && (
-        <Alert className='border-green-200 bg-green-50'>
-          <CheckCircle className='h-4 w-4' />
-          <AlertDescription className='text-green-800'>
-            {successMessage}
-          </AlertDescription>
+        <Alert className="bg-green-50 border-green-200">
+          <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
         </Alert>
       )}
-
       {errorMessage && (
-        <Alert className='border-red-200 bg-red-50'>
-          <AlertTriangle className='h-4 w-4' />
-          <AlertDescription className='text-red-800'>
-            {errorMessage}
-          </AlertDescription>
+        <Alert className="bg-red-50 border-red-200">
+          <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
         </Alert>
       )}
 
-      <Card>
-        <CardContent className='pt-6'>
-          <div className='flex flex-col xl:flex-row gap-4'>
-            {/* Search */}
-            <div className='flex-1'>
-              <div className='relative'>
-                <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-                <Input
-                  placeholder='Search by community name or region...'
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className='pl-10'
-                />
-              </div>
-            </div>
-
-            {/* Filters */}
-            <div className='flex items-center gap-2 [&_button]:md:flex-1'>
-              <Label className='text-sm whitespace-nowrap'>Tier</Label>
-              <Select
-                value={tierFilter}
-                onValueChange={(v) => {
-                  setTierFilter(v)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger className='w-32'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All</SelectItem>
-                  {uniqueTiers.map((tier) => (
-                    <SelectItem key={tier} value={tier}>
-                      {tier} Tier
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='flex items-center gap-2 [&_button]:md:flex-1'>
-              <Label className='text-sm whitespace-nowrap'>Region</Label>
-              <Select
-                value={regionFilter}
-                onValueChange={(v) => {
-                  setRegionFilter(v)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger className='w-40'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All</SelectItem>
-                  {uniqueRegions.map((region) => (
-                    <SelectItem key={region} value={region}>
-                      {region}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='flex items-center gap-2 [&_button]:md:flex-1'>
-              <Label className='text-sm whitespace-nowrap'>Census Year</Label>
-              <Select
-                value={censusYearFilter}
-                onValueChange={(v) => {
-                  setCensusYearFilter(v)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger className='w-32'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All</SelectItem>
-                  {uniqueCensusYears.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Communities Table */}
       <Card>
         <CardHeader>
-          <div className='flex flex-row items-center justify-between gap-2'>
-            <CardTitle>Communities</CardTitle>
-            <div className='flex items-center gap-2'>
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={() => setIsBulkImportDialogOpen(true)}
-              >
-                <Upload className='w-4 h-4 mr-2' />
-                Import Census Data
-              </Button>
-              {/* <Button variant="outline" size="sm">
-                                <Upload className="w-4 h-4 mr-2" />
-                                Import Census Data
-                            </Button> */}
-              {isAdmin && (
-                <Button size='sm' onClick={() => setIsAddDialogOpen(true)}>
-                  <Plus className='w-4 h-4 mr-2' />
-                  Add Community
-                </Button>
-              )}
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Communities Management
+              </CardTitle>
+              <CardDescription>
+                Manage census subdivisions and community data
+              </CardDescription>
             </div>
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Community
+            </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className='mb-4 text-sm text-muted-foreground'>
-            Showing {(page - 1) * pageSize + 1} to{' '}
-            {Math.min(page * pageSize, communitiesData.count)} of{' '}
-            {communitiesData.count} communities
+        <CardContent className="space-y-4">
+          {/* Search and Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search communities..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={tierFilter} onValueChange={setTierFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by tier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tiers</SelectItem>
+                <SelectItem value="Upper">Upper Tier</SelectItem>
+                <SelectItem value="Lower">Lower Tier</SelectItem>
+                <SelectItem value="Single">Single Tier</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={regionFilter} onValueChange={setRegionFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by region" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Regions</SelectItem>
+                {regionsData?.map((region) => (
+                  <SelectItem key={region.id} value={region.id}>
+                    {region.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <YearPicker
+              value={censusYearFilter !== 'all' ? parseInt(censusYearFilter) : undefined}
+              onChange={(year) => setCensusYearFilter(year.toString())}
+              placeholder="Filter by census year"
+            />
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead
-                  className='cursor-pointer hover:bg-muted/50 bg-gray-50'
-                  onClick={() => handleSort('name')}
-                >
-                  <div className='flex items-center gap-1'>
-                    Community Name
-                    <ArrowUpDown className='h-3 w-3' />
-                    <span className='text-xs'>{getSortIcon('name')}</span>
-                  </div>
-                </TableHead>
-                <TableHead
-                  className='cursor-pointer hover:bg-muted/50 bg-gray-50'
-                  onClick={() => handleSort('population')}
-                >
-                  <div className='flex items-center gap-1'>
-                    Population
-                    <ArrowUpDown className='h-3 w-3' />
-                    <span className='text-xs'>{getSortIcon('population')}</span>
-                  </div>
-                </TableHead>
-                <TableHead
-                  className='cursor-pointer hover:bg-muted/50 bg-gray-50'
-                  onClick={() => handleSort('tier')}
-                >
-                  <div className='flex items-center gap-1'>
-                    Tier
-                    <ArrowUpDown className='h-3 w-3' />
-                    <span className='text-xs'>{getSortIcon('tier')}</span>
-                  </div>
-                </TableHead>
-                <TableHead
-                  className='cursor-pointer hover:bg-muted/50 bg-gray-50'
-                  onClick={() => handleSort('region')}
-                >
-                  <div className='flex items-center gap-1'>
-                    Region/District
-                    <ArrowUpDown className='h-3 w-3' />
-                    <span className='text-xs'>{getSortIcon('region')}</span>
-                  </div>
-                </TableHead>
-                <TableHead
-                  className='cursor-pointer hover:bg-muted/50 bg-gray-50'
-                  onClick={() => handleSort('census_year')}
-                >
-                  <div className='flex items-center gap-1'>
-                    Census Year
-                    <ArrowUpDown className='h-3 w-3' />
-                    <span className='text-xs'>
-                      {getSortIcon('census_year')}
-                    </span>
-                  </div>
-                </TableHead>
-                <TableHead className='cursor-pointer hover:bg-muted/50 bg-gray-50'>
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
+
+          {/* Table */}
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className='text-center py-8'>
-                    Loading communities...
-                  </TableCell>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('name')}>
+                      Name
+                      <ArrowUpDown className="ml-2 h-4 w-4" />
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('population')}>
+                      Population
+                      <ArrowUpDown className="ml-2 h-4 w-4" />
+                    </Button>
+                  </TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead>Region</TableHead>
+                  <TableHead>Province</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : communitiesData.results.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className='text-center py-8'>
-                    No communities found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                communitiesData.results.map((community) => (
-                  <TableRow key={community.id}>
-                    <TableCell className='font-medium'>
-                      {community.name}
-                    </TableCell>
-                    <TableCell>
-                      {community.population.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant='outline'
-                        className={getTierBadge(community.tier)}
-                      >
-                        {community.tier} Tier
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{community.region || '-'}</TableCell>
-                    <TableCell>{community.census_year || 2021}</TableCell>
-                    <TableCell>
-                      <div className='flex items-center gap-2'>
-                        <Button
-                          variant='ghost'
-                          size='icon'
-                          onClick={() => handleEditCommunity(community)}
-                        >
-                          <Edit className='w-4 h-4' />
-                        </Button>
-                        <Button
-                          variant='ghost'
-                          size='icon'
-                          className='text-red-600'
-                          onClick={() => handleDeleteCommunity(community)}
-                        >
-                          <Trash2 className='w-4 h-4' />
-                        </Button>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8">
+                      Loading communities...
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : communities.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8">
+                      No communities found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  communities.map((community) => (
+                    <TableRow key={community.id}>
+                      <TableCell className="font-medium">{community.name}</TableCell>
+                      <TableCell>{community.population?.toLocaleString() || 'N/A'}</TableCell>
+                      <TableCell>
+                        <Badge className={getTierBadgeColor(community.tier)}>
+                          {community.tier || 'N/A'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{community.region_detail?.name || 'N/A'}</TableCell>
+                      <TableCell>{community.province || 'N/A'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditCommunity(community)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteCommunity(community)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className='flex items-center justify-between mt-4 pt-4 border-t gap-4'>
-              <div className='text-sm text-muted-foreground'>
-                Page {page} of {totalPages} ({totalCount} total)
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Showing {communities.length} of {communitiesData.totalDocs} communities
               </div>
-              {/* Page Size */}
-              <div className='flex items-center gap-2'>
-                <Label className='text-sm whitespace-nowrap'>Per Page</Label>
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={(v) => {
-                    setPageSize(Number(v))
-                    setPage(1)
-                  }}
-                >
-                  <SelectTrigger className='w-20'>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Show:</span>
+                <Select value={pageSize.toString()} onValueChange={(value) => setPageSize(parseInt(value))}>
+                  <SelectTrigger className="w-20">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='10'>10</SelectItem>
-                    <SelectItem value='20'>20</SelectItem>
-                    <SelectItem value='50'>50</SelectItem>
-                    <SelectItem value='100'>100</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
                   </SelectContent>
                 </Select>
+                <span className="text-sm text-gray-600">per page</span>
               </div>
-              <div className='flex items-center gap-1'>
+            </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex items-center gap-2">
                 <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => setPage(1)}
-                  disabled={page <= 1}
-                >
-                  <ChevronLeft className='h-4 w-4' />
-                  <ChevronLeft className='h-4 w-4 -ml-2' />
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
+                  variant="outline"
+                  size="sm"
                   onClick={() => setPage(page - 1)}
-                  disabled={page <= 1}
+                  disabled={!communitiesData.hasPrevPage || isLoading}
                 >
-                  <ChevronLeft className='h-4 w-4' />
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
                 </Button>
 
                 {/* Page Numbers */}
-                {(() => {
-                  const pages: number[] = []
-                  const currentPage = page
+                <div className="flex items-center gap-1">
+                  {(() => {
+                    const totalPages = communitiesData.totalPages || 1
+                    const currentPage = page
+                    const maxVisiblePages = 5
+                    const halfVisible = Math.floor(maxVisiblePages / 2)
 
-                  let startPage = Math.max(1, currentPage - 2)
-                  let endPage = Math.min(totalPages, currentPage + 2)
+                    let startPage = Math.max(1, currentPage - halfVisible)
+                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
 
-                  if (currentPage <= 3) {
-                    endPage = Math.min(5, totalPages)
-                  }
-                  if (currentPage >= totalPages - 2) {
-                    startPage = Math.max(1, totalPages - 4)
-                  }
+                    // Adjust start page if we're near the end
+                    if (endPage - startPage + 1 < maxVisiblePages) {
+                      startPage = Math.max(1, endPage - maxVisiblePages + 1)
+                    }
 
-                  for (let i = startPage; i <= endPage; i++) {
-                    pages.push(i)
-                  }
+                    const pages = []
+                    for (let i = startPage; i <= endPage; i++) {
+                      pages.push(
+                        <Button
+                          key={i}
+                          variant={i === currentPage ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPage(i)}
+                          disabled={isLoading}
+                          className="w-8 h-8 p-0"
+                        >
+                          {i}
+                        </Button>
+                      )
+                    }
 
-                  return pages.map((p) => (
-                    <Button
-                      key={p}
-                      variant={p === currentPage ? 'default' : 'outline'}
-                      size='sm'
-                      className='w-9'
-                      onClick={() => setPage(p)}
-                    >
-                      {p}
-                    </Button>
-                  ))
-                })()}
+                    return pages
+                  })()}
+                </div>
 
                 <Button
-                  variant='outline'
-                  size='sm'
+                  variant="outline"
+                  size="sm"
                   onClick={() => setPage(page + 1)}
-                  disabled={page >= totalPages}
+                  disabled={!communitiesData.hasNextPage || isLoading}
                 >
-                  <ChevronRight className='h-4 w-4' />
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => setPage(totalPages)}
-                  disabled={page >= totalPages}
-                >
-                  <ChevronRight className='h-4 w-4' />
-                  <ChevronRight className='h-4 w-4 -ml-2' />
+                  Next
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
-      <Dialog
-        open={!!editingCommunity}
-        onOpenChange={(open) => !open && setEditingCommunity(null)}
-      >
+      <Dialog open={!!editingCommunityId} onOpenChange={(open) => {
+        if (!open) {
+          setEditingCommunityId(null)
+          setEditingCommunity(null)
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Community</DialogTitle>
             <DialogDescription>Update community information</DialogDescription>
           </DialogHeader>
-          <div className='space-y-4'>
-            <div className='space-y-2'>
-              <Label>Community Name *</Label>
-              <Input
-                value={editForm.name}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, name: e.target.value })
-                }
-                placeholder='e.g., Toronto, Mississauga'
-                required
-              />
-            </div>
-            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <Label>Population *</Label>
-                <Input
-                  type='number'
-                  value={editForm.population}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      population: Number.parseInt(e.target.value) || 0,
-                    })
-                  }
-                  required
-                />
-              </div>
-              <div className='space-y-2'>
-                <Label>Census Year *</Label>
-                <Select
-                  value={editForm.census_year.toString()}
-                  onValueChange={(v) =>
-                    setEditForm({
-                      ...editForm,
-                      census_year: Number.parseInt(v),
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='2021'>2021</SelectItem>
-                    <SelectItem value='2016'>2016</SelectItem>
-                    <SelectItem value='2011'>2011</SelectItem>
-                  </SelectContent>
-                </Select>
+
+          {editingCommunityLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                <p>Loading community data...</p>
               </div>
             </div>
-            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <Label>Tier *</Label>
-                <Select
-                  value={editForm.tier}
-                  onValueChange={(v: 'Single' | 'Lower' | 'Upper') =>
-                    setEditForm({ ...editForm, tier: v })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='Single'>Single Tier</SelectItem>
-                    <SelectItem value='Lower'>Lower Tier</SelectItem>
-                    <SelectItem value='Upper'>Upper Tier</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='space-y-2'>
-                <Label>Region/District *</Label>
-                <Input
-                  value={editForm.region}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, region: e.target.value })
-                  }
-                  placeholder='e.g., Durham Region'
-                  required
-                />
-              </div>
+          ) : editingCommunityError ? (
+            <div className="text-center py-8">
+              <p className="text-red-500 mb-4">Failed to load community data</p>
+              <Button onClick={() => setEditingCommunityId(editingCommunityId)} variant="outline">
+                Try Again
+              </Button>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant='outline' onClick={() => setEditingCommunity(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveEdit}>Save Changes</Button>
-          </DialogFooter>
+          ) : editingCommunityData ? (
+            <EditCommunityForm
+              community={editingCommunityData}
+              regions={regionsData || []}
+              onSubmit={handleSaveEdit}
+              loading={updateMutation.isPending}
+              onCancel={() => {
+                setEditingCommunityId(null)
+                setEditingCommunity(null)
+              }}
+            />
+          ) : null}
         </DialogContent>
       </Dialog>
 
-      {/* Add Community Dialog - Admin Only */}
+      {/* Add Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add New Community</DialogTitle>
-            <DialogDescription>
-              Enter the details for the new community
-            </DialogDescription>
+            <DialogDescription>Create a new community entry</DialogDescription>
           </DialogHeader>
-          <div className='space-y-4'>
-            <div className='space-y-2'>
-              <Label>Community Name *</Label>
+          <form onSubmit={handleAddCommunity} className="space-y-4">
+            <div>
+              <Label htmlFor="create-name">Name *</Label>
               <Input
-                value={newCommunityForm.name}
-                onChange={(e) =>
-                  setNewCommunityForm({
-                    ...newCommunityForm,
-                    name: e.target.value,
-                  })
-                }
-                placeholder='e.g., Toronto, Mississauga'
-                required
+                id="create-name"
+                {...createForm.register('name')}
+                className={createForm.formState.errors.name ? 'border-red-500' : ''}
               />
+              {createForm.formState.errors.name && (
+                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.name.message}</p>
+              )}
             </div>
-            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <Label>Population *</Label>
-                <Input
-                  type='number'
-                  value={newCommunityForm.population}
-                  onChange={(e) =>
-                    setNewCommunityForm({
-                      ...newCommunityForm,
-                      population: Number.parseInt(e.target.value) || 0,
-                    })
-                  }
-                  required
-                />
-              </div>
-              <div className='space-y-2'>
-                <Label>Census Year *</Label>
-                <Select
-                  value={newCommunityForm.census_year.toString()}
-                  onValueChange={(v) =>
-                    setNewCommunityForm({
-                      ...newCommunityForm,
-                      census_year: Number.parseInt(v),
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='2021'>2021</SelectItem>
-                    <SelectItem value='2016'>2016</SelectItem>
-                    <SelectItem value='2011'>2011</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <Label htmlFor="create-population">Population</Label>
+              <Input
+                id="create-population"
+                type="number"
+                {...createForm.register('population')}
+                className={createForm.formState.errors.population ? 'border-red-500' : ''}
+              />
+              {createForm.formState.errors.population && (
+                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.population.message}</p>
+              )}
             </div>
-            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <Label>Tier *</Label>
-                <Select
-                  value={newCommunityForm.tier}
-                  onValueChange={(v: 'Single' | 'Lower' | 'Upper') =>
-                    setNewCommunityForm({ ...newCommunityForm, tier: v })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='Single'>Single Tier</SelectItem>
-                    <SelectItem value='Lower'>Lower Tier</SelectItem>
-                    <SelectItem value='Upper'>Upper Tier</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='space-y-2'>
-                <Label>Region/District *</Label>
-                <Input
-                  value={newCommunityForm.region}
-                  onChange={(e) =>
-                    setNewCommunityForm({
-                      ...newCommunityForm,
-                      region: e.target.value,
-                    })
-                  }
-                  placeholder='e.g., Durham Region'
-                  required
-                />
-              </div>
+            <div>
+              <Label htmlFor="create-tier">Tier</Label>
+              <Select
+                value={createForm.watch('tier')}
+                onValueChange={(value) => createForm.setValue('tier', value as 'Single' | 'Lower' | 'Upper')}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Upper">Upper Tier</SelectItem>
+                  <SelectItem value="Lower">Lower Tier</SelectItem>
+                  <SelectItem value="Single">Single Tier</SelectItem>
+                </SelectContent>
+              </Select>
+              {createForm.formState.errors.tier && (
+                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.tier.message}</p>
+              )}
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant='outline' onClick={() => setIsAddDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddCommunity}>Add Community</Button>
-          </DialogFooter>
+            <div>
+              <Label htmlFor="create-region">Region</Label>
+              <Select
+                value={createForm.watch('region')}
+                onValueChange={(value) => createForm.setValue('region', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select region" />
+                </SelectTrigger>
+                <SelectContent>
+                  {regionsData?.map((region) => (
+                    <SelectItem key={region.id} value={region.id}>
+                      {region.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {createForm.formState.errors.region && (
+                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.region.message}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="create-province">Province</Label>
+              <Input
+                id="create-province"
+                {...createForm.register('province')}
+                className={createForm.formState.errors.province ? 'border-red-500' : ''}
+              />
+              {createForm.formState.errors.province && (
+                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.province.message}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="create-census-year">Census Year</Label>
+              <YearPicker
+                value={createForm.watch('census_year')}
+                onChange={(year) => createForm.setValue('census_year', year)}
+                placeholder="Select census year"
+              />
+              {createForm.formState.errors.census_year && (
+                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.census_year.message}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Adding...' : 'Add Community'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -970,107 +815,15 @@ export default function CommunitiesManagement() {
           <DialogHeader>
             <DialogTitle>Delete Community</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{communityToDelete?.name}"? This
-              action cannot be undone.
+              Are you sure you want to delete "{communityToDelete?.name}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant='outline'
-              onClick={() => {
-                setIsDeleteDialogOpen(false)
-                setCommunityToDelete(null)
-              }}
-            >
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              variant='outline'
-              className='bg-black text-white'
-              onClick={confirmDeleteCommunity}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk Import Dialog */}
-      <Dialog
-        open={isBulkImportDialogOpen}
-        onOpenChange={setIsBulkImportDialogOpen}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Bulk Import Municipalities</DialogTitle>
-            <DialogDescription>
-              Upload a CSV file to bulk import municipalities. The CSV should
-              have headers: name (required), population (required), tier
-              (Single/Lower/Upper), region, province, census_year.
-            </DialogDescription>
-          </DialogHeader>
-          <div className='space-y-4'>
-            <div className='space-y-2'>
-              <Label htmlFor='csv-file'>Select CSV File</Label>
-              <Input
-                id='csv-file'
-                type='file'
-                accept='.csv'
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  setSelectedFile(file || null)
-                }}
-              />
-              {selectedFile && (
-                <p className='text-sm text-muted-foreground'>
-                  Selected: {selectedFile.name}
-                </p>
-              )}
-            </div>
-            {bulkImportResult && (
-              <div className='space-y-2'>
-                <Label>Import Results</Label>
-                <div className='p-4 bg-muted rounded-lg'>
-                  <p className='text-sm'>
-                    <strong>Created:</strong> {bulkImportResult.created}{' '}
-                    municipalities
-                  </p>
-                  <p className='text-sm'>
-                    <strong>Duplicates:</strong> {bulkImportResult.duplicates}{' '}
-                    skipped
-                  </p>
-                  {bulkImportResult.errors &&
-                    bulkImportResult.errors.length > 0 && (
-                      <div className='mt-2'>
-                        <p className='text-sm font-medium text-red-600'>
-                          Errors:
-                        </p>
-                        <ul className='text-sm text-red-600 list-disc list-inside'>
-                          {bulkImportResult.errors.map(
-                            (error: string, index: number) => (
-                              <li key={index}>{error}</li>
-                            ),
-                          )}
-                        </ul>
-                      </div>
-                    )}
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant='outline'
-              onClick={() => {
-                setIsBulkImportDialogOpen(false)
-                setSelectedFile(null)
-                setBulkImportResult(null)
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleBulkImport} disabled={!selectedFile}>
-              Import
+            <Button variant="outline" className='bg-black text-white hover:bg-black/70 hover:text-white' onClick={confirmDeleteCommunity} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>
