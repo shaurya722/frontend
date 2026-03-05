@@ -135,3 +135,11 @@ export async function exportCommunities(params: CommunitiesQueryParams = {}) {
 
   return response.data
 }
+
+/**
+ * Fetch available census years
+ */
+export async function fetchCensusYears(): Promise<{ years: Array<{ id: number; year: number }>; total: number }> {
+  const response = await axiosInstance.get<{ years: Array<{ id: number; year: number }>; total: number }>('/api/community/years/')
+  return response.data
+}

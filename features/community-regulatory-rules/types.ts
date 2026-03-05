@@ -8,6 +8,8 @@ export interface CommunityRegulatoryRule extends RegulatoryRule {
   is_applicable: boolean
   calculated_sites?: number
   reason?: string
+  census_year?: number
+  year: number
 }
 
 export interface CommunityRegulatoryRulesQueryParams {
@@ -18,6 +20,8 @@ export interface CommunityRegulatoryRulesQueryParams {
   program?: string
   category?: string
   rule_type?: string
+  status?: string
+  census_year?: number
   year?: number
 }
 

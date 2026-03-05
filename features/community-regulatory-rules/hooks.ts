@@ -26,7 +26,7 @@ export function useRegulatoryRules(params: CommunityRegulatoryRulesQueryParams =
   return useQuery({
     queryKey: [COMMUNITY_REGULATORY_RULES_QUERY_KEY, params],
     queryFn: () => fetchCommunityRegulatoryRules(params),
-    staleTime: 30000, // 30 seconds
+    staleTime: 0, // Disable caching for debugging
   })
 }
 

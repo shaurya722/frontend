@@ -51,9 +51,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowUpDown,
+  CheckCircle,
 } from 'lucide-react'
 
-import { useCommunities, useCreateCommunity, useUpdateCommunity, useDeleteCommunity, useCommunity } from '@/features/communities'
+import { useCommunities, useCreateCommunity, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears } from '@/features/communities'
 import type { Community, CommunityCensus } from '@/features/communities'
 import { useRegions } from '@/features/regions'
 import type { Region } from '@/features/regions'
@@ -210,27 +211,27 @@ export default function CommunitiesManagement() {
   const [tierFilter, setTierFilter] = useState<string>('all')
   const [regionFilter, setRegionFilter] = useState<string>('all')
   const [provinceFilter, setProvinceFilter] = useState<string>('all')
-  const [censusYearFilter, setCensusYearFilter] = useState<string>('all')
-  
+  const [selectedCensusYear, setSelectedCensusYear] = useState<string>('all')
+
   // Pagination state
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  
+
   // Sort state
   const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
   const [sortBy, setSortBy] = useState('created_at')
-  
+
   // Dialog state
   const [editingCommunity, setEditingCommunity] = useState<CommunityCensus | null>(null)
   const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [communityToDelete, setCommunityToDelete] = useState<CommunityCensus | null>(null)
-  
+
   // Form state - Remove old state management
   // const [editForm, setEditForm] = useState({...})
   // const [newCommunityForm, setNewCommunityForm] = useState({...})
-  
+
   // React Hook Form setup
   const createForm = useForm({
     resolver: yupResolver(communitySchema),
@@ -243,7 +244,7 @@ export default function CommunitiesManagement() {
       census_year: new Date().getFullYear(),
     },
   })
-  
+
   // UI state
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
@@ -264,18 +265,19 @@ export default function CommunitiesManagement() {
       page,
       limit: pageSize,
       search: debouncedSearch || undefined,
-      year: censusYearFilter !== 'all' ? parseInt(censusYearFilter) : undefined,
+      year: selectedCensusYear !== 'all' ? parseInt(selectedCensusYear) : undefined,
       tier: tierFilter !== 'all' ? tierFilter : undefined,
       region: regionFilter !== 'all' ? regionFilter : undefined,
       sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
     }
-  }, [page, pageSize, debouncedSearch, tierFilter, regionFilter, censusYearFilter, sortOrder, sortBy])
+  }, [page, pageSize, debouncedSearch, tierFilter, regionFilter, selectedCensusYear, sortOrder, sortBy])
 
   // Fetch communities using React Query
   const { data: communitiesResponse, isLoading, error, refetch } = useCommunities(queryParams)
 
   // Fetch regions using React Query hook
-  const { data: regionsData, isLoading: regionsLoading, error: regionsError } = useRegions()
+  // Fetch census years
+  const { data: censusYearsData, isLoading: isCensusYearsLoading } = useCensusYears()
 
   // Fetch single community for editing
   const { data: editingCommunityData, isLoading: editingCommunityLoading, error: editingCommunityError } = useCommunity(editingCommunityId || '', !!editingCommunityId)
@@ -292,7 +294,14 @@ export default function CommunitiesManagement() {
 
   const communities = communitiesData.results || []
 
-  // Show success/error messages temporarily
+  // Set latest census year as default when data loads
+  useEffect(() => {
+    if (censusYearsData?.years && censusYearsData.years.length > 0) {
+      const latestYear = Math.max(...censusYearsData.years.map(y => y.year))
+      setSelectedCensusYear(latestYear.toString())
+    }
+  }, [censusYearsData])
+
   useEffect(() => {
     if (successMessage) {
       const timer = setTimeout(() => setSuccessMessage(''), 3000)
@@ -470,24 +479,19 @@ export default function CommunitiesManagement() {
                 <SelectItem value="Single">Single Tier</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={regionFilter} onValueChange={setRegionFilter}>
+
+            <Select value={selectedCensusYear} onValueChange={setSelectedCensusYear}>
               <SelectTrigger>
-                <SelectValue placeholder="Filter by region" />
+                <SelectValue placeholder="Filter by census year" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Regions</SelectItem>
-                {regionsData?.map((region) => (
-                  <SelectItem key={region.id} value={region.id}>
-                    {region.name}
+                {censusYearsData?.years?.map((year) => (
+                  <SelectItem key={year.id} value={year.year.toString()}>
+                    {year.year}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <YearPicker
-              value={censusYearFilter !== 'all' ? parseInt(censusYearFilter) : undefined}
-              onChange={(year) => setCensusYearFilter(year.toString())}
-              placeholder="Filter by census year"
-            />
           </div>
 
           {/* Table */}
@@ -507,22 +511,26 @@ export default function CommunitiesManagement() {
                       <ArrowUpDown className="ml-2 h-4 w-4" />
                     </Button>
                   </TableHead>
-                  <TableHead>Tier</TableHead>
-                  <TableHead>Region</TableHead>
-                  <TableHead>Province</TableHead>
+                  {/* <TableHead>Tier</TableHead> */}
+                  {/* <TableHead>Region</TableHead> */}
+                  {/* <TableHead>Province</TableHead>  */}
+                  <TableHead>
+                    Census Year
+                  </TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       Loading communities...
                     </TableCell>
                   </TableRow>
                 ) : communities.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       No communities found
                     </TableCell>
                   </TableRow>
@@ -531,13 +539,22 @@ export default function CommunitiesManagement() {
                     <TableRow key={community.id}>
                       <TableCell className="font-medium">{community.community_name}</TableCell>
                       <TableCell>{community.population?.toLocaleString() || 'N/A'}</TableCell>
-                      <TableCell>
+                      {/* <TableCell>
                         <Badge className={getTierBadgeColor(community.tier)}>
                           {community.tier || 'N/A'}
                         </Badge>
+                      </TableCell> */}
+                      {/* <TableCell>{community.region || 'N/A'}</TableCell> */}
+                      {/* <TableCell>{community.province || 'N/A'}</TableCell> */}
+                      <TableCell>
+                        {community.census_year_value}
                       </TableCell>
-                      <TableCell>{community.region || 'N/A'}</TableCell>
-                      <TableCell>{community.province || 'N/A'}</TableCell>
+                      <TableCell>
+                        <Badge className='bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'>
+                          <CheckCircle className='h-3 w-3 mr-1' />
+                          Active
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button
@@ -677,7 +694,7 @@ export default function CommunitiesManagement() {
           ) : editingCommunityData ? (
             <EditCommunityForm
               community={editingCommunityData}
-              regions={regionsData || []}
+              regions={[]}
               onSubmit={handleSaveEdit}
               loading={updateMutation.isPending}
               onCancel={() => {
@@ -741,21 +758,7 @@ export default function CommunitiesManagement() {
             </div>
             <div>
               <Label htmlFor="create-region">Region</Label>
-              <Select
-                value={createForm.watch('region')}
-                onValueChange={(value) => createForm.setValue('region', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select region" />
-                </SelectTrigger>
-                <SelectContent>
-                  {regionsData?.map((region) => (
-                    <SelectItem key={region.id} value={region.id}>
-                      {region.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input placeholder='region' />
               {createForm.formState.errors.region && (
                 <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.region.message}</p>
               )}

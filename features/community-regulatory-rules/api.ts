@@ -17,7 +17,7 @@ import type {
 export async function fetchCommunityRegulatoryRules(
   params: CommunityRegulatoryRulesQueryParams = {}
 ): Promise<{ results: CommunityRegulatoryRule[] }> {
-  const { page = 1, limit = 10, search, sort, program, category, rule_type, year = 2026 } = params
+  const { page = 1, limit = 10, search, sort, program, category, rule_type, status, year } = params
 
   // Build query string
   const queryParams = new URLSearchParams()
@@ -48,6 +48,10 @@ export async function fetchCommunityRegulatoryRules(
     queryParams.append('rule_type', rule_type)
   }
 
+  if (status) {
+    queryParams.append('status', status)
+  }
+
   const response = await axiosInstance.get<{ results: CommunityRegulatoryRule[] }>(
     `/api/regulatory-rules/rules/?${queryParams.toString()}`
   )
@@ -59,7 +63,7 @@ export async function fetchCommunityRegulatoryRules(
  * Fetch single community regulatory rule by ID
  */
 export async function fetchCommunityRegulatoryRuleById(id: string): Promise<CommunityRegulatoryRule> {
-  const response = await axiosInstance.get<ApiResponse<CommunityRegulatoryRule>>(`/regulatory-rules/${id}/`)
+  const response = await axiosInstance.get<ApiResponse<CommunityRegulatoryRule>>(`/api/regulatory-rules/rules/${id}/`)
   return response.data.data
 }
 

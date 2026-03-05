@@ -9,6 +9,7 @@ import {
   deleteCommunity,
   bulkImportCommunities,
   exportCommunities,
+  fetchCensusYears,
 } from './api'
 import type { CommunitiesQueryParams, CreateCommunityDto, UpdateCommunityDto } from './types'
 
@@ -106,5 +107,16 @@ export function useBulkImportCommunities() {
 export function useExportCommunities() {
   return useMutation({
     mutationFn: (params: CommunitiesQueryParams) => exportCommunities(params),
+  })
+}
+
+/**
+ * Hook to fetch available census years
+ */
+export function useCensusYears() {
+  return useQuery({
+    queryKey: ['census-years'],
+    queryFn: () => fetchCensusYears(),
+    staleTime: 300000, // 5 minutes - census years don't change often
   })
 }

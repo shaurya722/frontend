@@ -41,9 +41,10 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react'
+import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import type { RegulatoryRule } from '@/lib/api/regulatory-rules'
 import { useRegulatoryRules, useCommunityRegulatoryRule, useUpdateCommunityRegulatoryRule, useDeleteRegulatoryRule } from '@/features/community-regulatory-rules'
+import { useCensusYears } from '@/features/communities'
 
 interface RuleParameters {
   // Site Calculation Parameters
@@ -84,26 +85,25 @@ export default function RegulatoryRulesManagement({
   const [selectedProgram, setSelectedProgram] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedRuleType, setSelectedRuleType] = useState('all')
+  const [selectedStatus, setSelectedStatus] = useState('all')
+  const [selectedCensusYear, setSelectedCensusYear] = useState<string>('all')
   
   // Pagination state
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   
   // Sort state
-  const [sortField, setSortField] = useState('name')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
+  const [sortBy, setSortBy] = useState('created_at')
   
   // Handle sort column clicks
   const handleSort = (field: string) => {
-    if (sortField === field) {
-      // Toggle direction if same field
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 1 ? -1 : 1)
     } else {
-      // New field, start with ascending
-      setSortField(field)
-      setSortDirection('asc')
+      setSortBy(field)
+      setSortOrder(-1)
     }
-    setPage(1) // Reset to first page when sorting
   }
   
   // Dialog state
@@ -111,6 +111,10 @@ export default function RegulatoryRulesManagement({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
   const [deleteRuleName, setDeleteRuleName] = useState<string>('')
+
+  // Show success/error messages temporarily
+  const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   // Debounce search input
   useEffect(() => {
@@ -123,22 +127,23 @@ export default function RegulatoryRulesManagement({
 
   // Build query params for React Query
   const queryParams = useMemo(() => {
-    const sort = sortDirection === 'desc' ? `-${sortField}` : sortField
     return {
       page,
       limit: pageSize,
       search: debouncedSearch || undefined,
-      sort,
+      sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
       program: selectedProgram !== 'all' ? selectedProgram : undefined,
       category: selectedCategory !== 'all' ? selectedCategory : undefined,
       rule_type: selectedRuleType !== 'all' ? selectedRuleType : undefined,
-      year: 2026,
+      is_active: selectedStatus !== 'all' ? (selectedStatus === 'active' ? true : false) : undefined,
+      year: selectedCensusYear !== 'all' ? parseInt(selectedCensusYear) : undefined,
     }
-  }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, sortField, sortDirection])
+  }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, selectedStatus, selectedCensusYear, sortOrder, sortBy])
 
   // Fetch regulatory rules using React Query
   const { data: regulatoryRulesResponse, isLoading, error, refetch } = useRegulatoryRules(queryParams)
-  console.log('regulatoryRulesResponse', regulatoryRulesResponse)
+  // Fetch census years
+  const { data: censusYearsData, isLoading: isCensusYearsLoading } = useCensusYears()
   // Mutations
   const updateMutation = useUpdateCommunityRegulatoryRule()
   const deleteMutation = useDeleteRegulatoryRule()
@@ -184,9 +189,13 @@ export default function RegulatoryRulesManagement({
     !!editingRuleId && isEditDialogOpen
   )
 
-  // Show success/error messages temporarily
-  const [successMessage, setSuccessMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+  // Set latest census year as default when data loads
+  useEffect(() => {
+    if (censusYearsData?.years && censusYearsData.years.length > 0) {
+      const latestYear = Math.max(...censusYearsData.years.map(y => y.year))
+      setSelectedCensusYear(latestYear.toString())
+    }
+  }, [censusYearsData])
 
   useEffect(() => {
     if (successMessage) {
@@ -218,7 +227,7 @@ export default function RegulatoryRulesManagement({
         base_required_sites: rule.base_required_sites || null,
         event_offset_percentage: rule.event_offset_percentage || null,
         reallocation_percentage: rule.reallocation_percentage || null,
-        is_active: rule.status === 'Active',
+        is_active: rule.is_active ?? true,
       })
     }
   }, [editingRuleData, isEditDialogOpen, editForm])
@@ -384,7 +393,27 @@ export default function RegulatoryRulesManagement({
   }
 
   // Since API returns object with results array, extract the rules array
-  const rules = regulatoryRulesResponse?.results || []
+  const rawRules = regulatoryRulesResponse?.results || []
+
+  // Apply client-side sorting
+  const rules = useMemo(() => {
+    if (!Array.isArray(rawRules)) return []
+
+    return [...rawRules].sort((a, b) => {
+      let aValue: any = a[sortBy as keyof typeof a]
+      let bValue: any = b[sortBy as keyof typeof b]
+
+      // Handle string comparison (case insensitive)
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = bValue.toLowerCase()
+      }
+
+      if (aValue < bValue) return sortOrder === 1 ? -1 : 1
+      if (aValue > bValue) return sortOrder === 1 ? 1 : -1
+      return 0
+    })
+  }, [rawRules, sortBy, sortOrder])
 
   const ruleStats = {
     total: Array.isArray(rules) ? rules.length : 0,
@@ -409,7 +438,7 @@ export default function RegulatoryRulesManagement({
       )}
 
       {/* Header with Stats */}
-      <div className='grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
+      {/* <div className='grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
         <Card>
           <CardHeader className='pb-3'>
             <CardTitle className='text-sm font-medium text-muted-foreground'>
@@ -466,14 +495,14 @@ export default function RegulatoryRulesManagement({
             <div className='text-2xl font-bold'>{ruleStats.programs}</div>
           </CardContent>
         </Card>
-      </div>
+      </div> */}
 
       {/* Main Rules Table */}
       <Card>
         
         <CardContent>
           {/* Search and Filters */}
-          <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 pt-3'>
+          <div className='grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 mb-6 pt-3'>
             <div className='relative'>
               <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input
@@ -524,126 +553,185 @@ export default function RegulatoryRulesManagement({
                 <SelectItem value='Reallocation'>Reallocation</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='all'>All Status</SelectItem>
+                <SelectItem value='true'>Active</SelectItem>
+                <SelectItem value='false'>Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedCensusYear} onValueChange={setSelectedCensusYear}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by census year" />
+              </SelectTrigger>
+              <SelectContent>
+                {censusYearsData?.years?.map((year) => (
+                  <SelectItem key={year.id} value={year.year.toString()}>
+                    {year.year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Rules Table */}
-          {isLoading ? (
-            <div className='text-center py-8 text-muted-foreground'>
-              Loading regulatory rules...
-            </div>
-          ) : rules.length === 0 ? (
-            <div className='text-center py-8 text-muted-foreground'>
-              No rules found matching the current filters
-            </div>
-          ) : (
-            <div className='border rounded-lg'>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold">
-                        Name
-                        {sortField === 'name' && (
-                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
-                        )}
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('program')} className="h-auto p-0 font-semibold">
-                        Program
-                        {sortField === 'program' && (
-                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
-                        )}
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('category')} className="h-auto p-0 font-semibold">
-                        Category
-                        {sortField === 'category' && (
-                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
-                        )}
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('rule_type')} className="h-auto p-0 font-semibold">
-                        Type
-                        {sortField === 'rule_type' && (
-                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
-                        )}
-                      </Button>
-                    </TableHead>
-                    <TableHead>Parameters</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className='text-right'>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {Array.isArray(rules) && rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell>
-                        <div>
-                          <div className='font-medium whitespace-nowrap'>
-                            {rule.name}
-                          </div>
-                          <div className='text-sm text-muted-foreground'>
-                            {rule.description}
-                          </div>
+          <div className='border rounded-lg relative'>
+            {isLoading && (
+              <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 flex items-center justify-center z-10 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                  Loading regulatory rules...
+                </div>
+              </div>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Name
+                      {sortBy === 'name' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('program')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Program
+                      {sortBy === 'program' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('category')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Category
+                      {sortBy === 'category' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('rule_type')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Type
+                      {sortBy === 'rule_type' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('year')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Census Year
+                      {sortBy === 'year' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>Parameters</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className='text-right'>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.isArray(rules) && rules.length > 0 ? rules.map((rule) => (
+                  <TableRow key={rule.id}>
+                    <TableCell>
+                      <div>
+                        <div className='font-medium whitespace-nowrap'>
+                          {rule.name}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant='outline'>{rule.program}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant='secondary'>{rule.category}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={getRuleTypeBadgeColor(rule.rule_type)}
-                        >
-                          {rule.rule_type.replace(/_/g, ' ')}
+                        <div className='text-sm text-muted-foreground'>
+                          {rule.description}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant='outline'>{rule.program}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant='secondary'>{rule.category}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={getRuleTypeBadgeColor(rule.rule_type)}
+                      >
+                        {rule.rule_type.replace(/_/g, ' ')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                   {rule.year}
+                    </TableCell>
+                    <TableCell className='max-w-md whitespace-nowrap'>
+                      {renderRuleParameters(rule)}
+                    </TableCell>
+                    <TableCell>
+                      {rule.is_active === true ? (
+                        <Badge className='bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'>
+                          <CheckCircle className='h-3 w-3 mr-1' />
+                          Active
                         </Badge>
-                      </TableCell>
-                      <TableCell className='max-w-md whitespace-nowrap'>
-                        {renderRuleParameters(rule)}
-                      </TableCell>
-                      <TableCell>
-                        {rule.status === 'Active' ? (
-                          <Badge className='bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'>
-                            <CheckCircle className='h-3 w-3 mr-1' />
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge variant='secondary'>Inactive</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        <div className='flex justify-end gap-2'>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            onClick={() => handleEditRule(rule.id)}
-                          >
-                            <Edit className='h-4 w-4' />
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            onClick={() => handleDeleteRule(rule.id, rule.name)}
-                            className='text-red-600 hover:text-red-700 hover:bg-red-50'
-                          >
-                            <Trash2 className='h-4 w-4' />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                      ) : (
+                        <Badge variant='secondary'>Inactive</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className='text-right'>
+                      <div className='flex justify-end gap-2'>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => handleEditRule(rule.id)}
+                          disabled={isLoading}
+                        >
+                          <Edit className='h-4 w-4' />
+                        </Button>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => handleDeleteRule(rule.id, rule.name)}
+                          className='text-red-600 hover:text-red-700 hover:bg-red-50'
+                          disabled={isLoading}
+                        >
+                          <Trash2 className='h-4 w-4' />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )) : !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      No rules found matching the current filters
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
           {/* Pagination */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-3">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <div className="text-sm text-gray-600">
                 Showing {rules.length} of {rules.length} regulatory rules
