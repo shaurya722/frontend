@@ -20,8 +20,8 @@ export interface CommunityRegulatoryRulesQueryParams {
   program?: string
   category?: string
   rule_type?: string
-  status?: string
   census_year?: number
+  is_active?: boolean | string
   year?: number
 }
 

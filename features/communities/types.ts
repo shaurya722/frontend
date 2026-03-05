@@ -67,7 +67,7 @@ export interface CommunitiesQueryParams {
   region?: string
   min_population?: number
   max_population?: number
-  is_active?: boolean
+  is_active?: boolean | string
   sort?: string
 }
 

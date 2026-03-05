@@ -212,6 +212,7 @@ export default function CommunitiesManagement() {
   const [regionFilter, setRegionFilter] = useState<string>('all')
   const [provinceFilter, setProvinceFilter] = useState<string>('all')
   const [selectedCensusYear, setSelectedCensusYear] = useState<string>('all')
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
 
   // Pagination state
   const [page, setPage] = useState(1)
@@ -268,9 +269,10 @@ export default function CommunitiesManagement() {
       year: selectedCensusYear !== 'all' ? parseInt(selectedCensusYear) : undefined,
       tier: tierFilter !== 'all' ? tierFilter : undefined,
       region: regionFilter !== 'all' ? regionFilter : undefined,
+      is_active: selectedStatus !== 'all' ? selectedStatus : undefined,
       sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
     }
-  }, [page, pageSize, debouncedSearch, tierFilter, regionFilter, selectedCensusYear, sortOrder, sortBy])
+  }, [page, pageSize, debouncedSearch, tierFilter, regionFilter, selectedCensusYear, selectedStatus, sortOrder, sortBy])
 
   // Fetch communities using React Query
   const { data: communitiesResponse, isLoading, error, refetch } = useCommunities(queryParams)
@@ -477,6 +479,17 @@ export default function CommunitiesManagement() {
                 <SelectItem value="Upper">Upper Tier</SelectItem>
                 <SelectItem value="Lower">Lower Tier</SelectItem>
                 <SelectItem value="Single">Single Tier</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="true">Active</SelectItem>
+                <SelectItem value="false">Inactive</SelectItem>
               </SelectContent>
             </Select>
 

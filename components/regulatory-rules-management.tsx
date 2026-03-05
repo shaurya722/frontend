@@ -85,7 +85,7 @@ export default function RegulatoryRulesManagement({
   const [selectedProgram, setSelectedProgram] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedRuleType, setSelectedRuleType] = useState('all')
-  const [selectedStatus, setSelectedStatus] = useState('all')
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedCensusYear, setSelectedCensusYear] = useState<string>('all')
   
   // Pagination state
@@ -135,7 +135,7 @@ export default function RegulatoryRulesManagement({
       program: selectedProgram !== 'all' ? selectedProgram : undefined,
       category: selectedCategory !== 'all' ? selectedCategory : undefined,
       rule_type: selectedRuleType !== 'all' ? selectedRuleType : undefined,
-      is_active: selectedStatus !== 'all' ? (selectedStatus === 'active' ? true : false) : undefined,
+      is_active: selectedStatus !== 'all' ? selectedStatus : undefined,
       year: selectedCensusYear !== 'all' ? parseInt(selectedCensusYear) : undefined,
     }
   }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, selectedStatus, selectedCensusYear, sortOrder, sortBy])
@@ -555,12 +555,12 @@ export default function RegulatoryRulesManagement({
             </Select>
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value='all'>All Status</SelectItem>
-                <SelectItem value='true'>Active</SelectItem>
-                <SelectItem value='false'>Inactive</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="true">Active</SelectItem>
+                <SelectItem value="false">Inactive</SelectItem>
               </SelectContent>
             </Select>
             <Select value={selectedCensusYear} onValueChange={setSelectedCensusYear}>
