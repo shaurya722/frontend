@@ -43,7 +43,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react'
 import type { RegulatoryRule } from '@/lib/api/regulatory-rules'
-import { useRegulatoryRules, useCommunityRegulatoryRule, useUpdateCommunityRegulatoryRule } from '@/features/community-regulatory-rules'
+import { useRegulatoryRules, useCommunityRegulatoryRule, useUpdateCommunityRegulatoryRule, useDeleteRegulatoryRule } from '@/features/community-regulatory-rules'
 
 interface RuleParameters {
   // Site Calculation Parameters
@@ -90,11 +90,27 @@ export default function RegulatoryRulesManagement({
   const [pageSize, setPageSize] = useState(20)
   
   // Sort state
-  const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
-  const [sortBy, setSortBy] = useState('created_at')
+  const [sortField, setSortField] = useState('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  
+  // Handle sort column clicks
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // New field, start with ascending
+      setSortField(field)
+      setSortDirection('asc')
+    }
+    setPage(1) // Reset to first page when sorting
+  }
   
   // Dialog state
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
+  const [deleteRuleName, setDeleteRuleName] = useState<string>('')
 
   // Debounce search input
   useEffect(() => {
@@ -107,30 +123,25 @@ export default function RegulatoryRulesManagement({
 
   // Build query params for React Query
   const queryParams = useMemo(() => {
-    const filters: any = {}
-    if (selectedProgram !== 'all') filters.program = selectedProgram
-    if (selectedCategory !== 'all') filters.category = selectedCategory
-    if (selectedRuleType !== 'all') filters.rule_type = selectedRuleType
-
+    const sort = sortDirection === 'desc' ? `-${sortField}` : sortField
     return {
       page,
       limit: pageSize,
       search: debouncedSearch || undefined,
-      searchFields: ['name', 'description'],
-      filters: Object.keys(filters).length > 0 ? filters : undefined,
-      sort: sortOrder,
-      sortBy,
+      sort,
+      program: selectedProgram !== 'all' ? selectedProgram : undefined,
+      category: selectedCategory !== 'all' ? selectedCategory : undefined,
+      rule_type: selectedRuleType !== 'all' ? selectedRuleType : undefined,
+      year: 2026,
     }
-  }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, sortOrder, sortBy])
+  }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, sortField, sortDirection])
 
   // Fetch regulatory rules using React Query
   const { data: regulatoryRulesResponse, isLoading, error, refetch } = useRegulatoryRules(queryParams)
-
+  console.log('regulatoryRulesResponse', regulatoryRulesResponse)
   // Mutations
   const updateMutation = useUpdateCommunityRegulatoryRule()
-  // const deleteMutation = useDeleteCommunityRegulatoryRule()
-
-  // Form schemas
+  const deleteMutation = useDeleteRegulatoryRule()
   const editSchema = yup.object({
     name: yup.string().required('Rule name is required'),
     description: yup.string().required('Description is required'),
@@ -164,17 +175,7 @@ export default function RegulatoryRulesManagement({
     },
   })
 
-  // Extract data from response
-  const regulatoryRulesData = useMemo(() => {
-    if (!regulatoryRulesResponse?.data) {
-      return { docs: [], totalDocs: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false }
-    }
-    return regulatoryRulesResponse.data
-  }, [regulatoryRulesResponse])
-
-  const rules = regulatoryRulesData.docs || []
-
-  // State for edit functionality
+  //   for edit functionality
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
 
   // Fetch single rule for editing
@@ -269,18 +270,25 @@ export default function RegulatoryRulesManagement({
     }
   }
 
-  // const handleDeleteRule = async (ruleId: string) => {
-  //   if (!confirm('Are you sure you want to delete this rule?')) return
+  const handleDeleteRule = (ruleId: string, ruleName: string) => {
+    setDeleteRuleId(ruleId)
+    setDeleteRuleName(ruleName)
+    setIsDeleteDialogOpen(true)
+  }
 
-  //   try {
-  //     await deleteRegulatoryRule(ruleId)
+  const handleConfirmDelete = async () => {
+    if (!deleteRuleId) return
 
-  //     setRules(rules.filter((r) => r.id !== ruleId))
-  //   } catch (error) {
-  //     console.error('[v0] Error deleting rule:', error)
-  //     alert('Failed to delete rule. Please try again.')
-  //   }
-  // }
+    try {
+      await deleteMutation.mutateAsync(deleteRuleId)
+      setSuccessMessage(`Regulatory rule "${deleteRuleName}" deleted successfully`)
+      setIsDeleteDialogOpen(false)
+      setDeleteRuleId(null)
+      setDeleteRuleName('')
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Failed to delete regulatory rule')
+    }
+  }
 
   const handleEditCommunity = editForm.handleSubmit(handleSaveRule)
 
@@ -375,12 +383,15 @@ export default function RegulatoryRulesManagement({
     }
   }
 
+  // Since API returns object with results array, extract the rules array
+  const rules = regulatoryRulesResponse?.results || []
+
   const ruleStats = {
-    total: regulatoryRulesData.totalDocs || 0,
-    active: rules.filter((r) => r.status === 'Active').length,
-    siteCalculation: rules.filter((r) => r.rule_type === 'Site Requirements').length,
-    offsetRules: rules.filter((r) => r.rule_type === 'Events' || r.rule_type === 'Reallocation').length,
-    programs: new Set(rules.map((r) => r.program)).size,
+    total: Array.isArray(rules) ? rules.length : 0,
+    active: Array.isArray(rules) ? rules.filter((r) => r.is_active).length : 0,
+    siteCalculation: Array.isArray(rules) ? rules.filter((r) => r.rule_type === 'Site Requirements').length : 0,
+    offsetRules: Array.isArray(rules) ? rules.filter((r) => r.rule_type === 'Events' || r.rule_type === 'Reallocation').length : 0,
+    programs: Array.isArray(rules) ? new Set(rules.map((r) => r.program)).size : 0,
   }
 
   return (
@@ -530,21 +541,44 @@ export default function RegulatoryRulesManagement({
                 <TableHeader>
                   <TableRow>
                     <TableHead>
-                      <Button variant="ghost" size="sm" onClick={() => setSortBy('name')}>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold">
                         Name
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                        {sortField === 'name' && (
+                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+                        )}
                       </Button>
                     </TableHead>
-                    <TableHead>Program</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Type</TableHead>
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('program')} className="h-auto p-0 font-semibold">
+                        Program
+                        {sortField === 'program' && (
+                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('category')} className="h-auto p-0 font-semibold">
+                        Category
+                        {sortField === 'category' && (
+                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('rule_type')} className="h-auto p-0 font-semibold">
+                        Type
+                        {sortField === 'rule_type' && (
+                          <ArrowUpDown className={`ml-2 h-4 w-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+                        )}
+                      </Button>
+                    </TableHead>
                     <TableHead>Parameters</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className='text-right'>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rules.map((rule) => (
+                  {Array.isArray(rules) && rules.map((rule) => (
                     <TableRow key={rule.id}>
                       <TableCell>
                         <div>
@@ -591,7 +625,14 @@ export default function RegulatoryRulesManagement({
                           >
                             <Edit className='h-4 w-4' />
                           </Button>
-                        
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            onClick={() => handleDeleteRule(rule.id, rule.name)}
+                            className='text-red-600 hover:text-red-700 hover:bg-red-50'
+                          >
+                            <Trash2 className='h-4 w-4' />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -605,7 +646,7 @@ export default function RegulatoryRulesManagement({
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <div className="text-sm text-gray-600">
-                Showing {rules.length} of {regulatoryRulesData.totalDocs} regulatory rules
+                Showing {rules.length} of {rules.length} regulatory rules
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Show:</span>
@@ -629,7 +670,7 @@ export default function RegulatoryRulesManagement({
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(page - 1)}
-                  disabled={!regulatoryRulesData.hasPrevPage || isLoading}
+                  disabled={page <= 1 || isLoading}
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Previous
@@ -637,45 +678,22 @@ export default function RegulatoryRulesManagement({
 
                 {/* Page Numbers */}
                 <div className="flex items-center gap-1">
-                  {(() => {
-                    const totalPages = regulatoryRulesData.totalPages || 1
-                    const currentPage = page
-                    const maxVisiblePages = 5
-                    const halfVisible = Math.floor(maxVisiblePages / 2)
-
-                    let startPage = Math.max(1, currentPage - halfVisible)
-                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
-
-                    // Adjust start page if we're near the end
-                    if (endPage - startPage + 1 < maxVisiblePages) {
-                      startPage = Math.max(1, endPage - maxVisiblePages + 1)
-                    }
-
-                    const pages = []
-                    for (let i = startPage; i <= endPage; i++) {
-                      pages.push(
-                        <Button
-                          key={i}
-                          variant={i === currentPage ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setPage(i)}
-                          disabled={isLoading}
-                          className="w-8 h-8 p-0"
-                        >
-                          {i}
-                        </Button>
-                      )
-                    }
-
-                    return pages
-                  })()}
+                  <Button
+                    variant={page === 1 ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPage(1)}
+                    disabled={isLoading}
+                    className="w-8 h-8 p-0"
+                  >
+                    1
+                  </Button>
                 </div>
 
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(page + 1)}
-                  disabled={!regulatoryRulesData.hasNextPage || isLoading}
+                  disabled={page >= 1 || isLoading}
                 >
                   Next
                   <ChevronRight className="h-4 w-4" />
@@ -972,6 +990,26 @@ export default function RegulatoryRulesManagement({
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Rule Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Regulatory Rule</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the rule "{deleteRuleName}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="outline" className='bg-black text-white' onClick={handleConfirmDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

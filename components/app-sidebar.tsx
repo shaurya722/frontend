@@ -51,6 +51,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { number } from "yup"
 
 interface UserData {
   id: number
@@ -62,7 +63,12 @@ interface UserData {
 export function AppSidebar() {
   const router = useRouter()
   const pathname = usePathname()
-  const [user, setUser] = useState<UserData | null>(null)
+  const [user, setUser] = useState<UserData | null>({
+    id: 1,
+    email: "test@example.com",
+    first_name: "John",
+    last_name: "Doe",
+  })
   const [showLogoutDialog, setShowLogoutDialog] = useState(false)
 
   useEffect(() => {

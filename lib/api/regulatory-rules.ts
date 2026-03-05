@@ -17,6 +17,7 @@ export interface RegulatoryRule {
   event_offset_percentage?: number | null
   reallocation_percentage?: number | null
   status: string
+  is_active?: boolean
   created_at: string
   updated_at: string
 }

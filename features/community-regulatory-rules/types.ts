@@ -11,17 +11,14 @@ export interface CommunityRegulatoryRule extends RegulatoryRule {
 }
 
 export interface CommunityRegulatoryRulesQueryParams {
-  communityId?: string
   page?: number
   limit?: number
   search?: string
-  searchFields?: string[]
-  filters?: CommunityRegulatoryRulesFilters
-  sort?: 1 | -1
-  sortBy?: string
+  sort?: string
   program?: string
   category?: string
   rule_type?: string
+  year?: number
 }
 
 export interface CommunityRegulatoryRulesFilters {

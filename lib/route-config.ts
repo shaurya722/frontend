@@ -2,12 +2,15 @@
 
 export const publicRoutes = [
   '/login',
-]
-
-export const protectedRoutes = [
   '/dashboard',
   '/dashboard/communities',
   '/dashboard/rules',
+]
+
+export const protectedRoutes = [
+  // '/dashboard',
+  // '/dashboard/communities',
+  // '/dashboard/rules',
 ]
 
 export const defaultProtectedRoute = '/dashboard'

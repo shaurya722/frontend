@@ -16,40 +16,40 @@ import type {
  */
 export async function fetchCommunityRegulatoryRules(
   params: CommunityRegulatoryRulesQueryParams = {}
-): Promise<ApiResponse<PaginatedResponse<CommunityRegulatoryRule>>> {
-  const { page = 1, limit = 20, search, searchFields, filters, sort, sortBy } = params
+): Promise<{ results: CommunityRegulatoryRule[] }> {
+  const { page = 1, limit = 10, search, sort, program, category, rule_type, year = 2026 } = params
 
   // Build query string
   const queryParams = new URLSearchParams()
   queryParams.append('page', page.toString())
   queryParams.append('limit', limit.toString())
 
-  // Build request body
-  const body: CommunityRegulatoryRulesRequestBody = {}
-
   if (search) {
-    body.search = search
+    queryParams.append('search', search)
   }
 
-  if (searchFields && searchFields.length > 0) {
-    body.searchFields = searchFields
+  if (year) {
+    queryParams.append('year', year.toString())
   }
 
-  if (filters && Object.keys(filters).length > 0) {
-    body.filters = filters
+  if (sort) {
+    queryParams.append('sort', sort)
   }
 
-  if (sort !== undefined) {
-    body.sort = sort
+  if (program) {
+    queryParams.append('program', program)
   }
 
-  if (sortBy) {
-    body.sortBy = sortBy
+  if (category) {
+    queryParams.append('category', category)
   }
 
-  const response = await axiosInstance.post<ApiResponse<PaginatedResponse<CommunityRegulatoryRule>>>(
-    `/regulatory-rules/?${queryParams.toString()}`,
-    body
+  if (rule_type) {
+    queryParams.append('rule_type', rule_type)
+  }
+
+  const response = await axiosInstance.get<{ results: CommunityRegulatoryRule[] }>(
+    `/api/regulatory-rules/rules/?${queryParams.toString()}`
   )
 
   return response.data
@@ -119,13 +119,7 @@ export async function bulkImportCommunityRegulatoryRules(file: File) {
   return response.data
 }
 
-/**
- * Export community regulatory rules to CSV
- */
-export async function exportCommunityRegulatoryRules(params: CommunityRegulatoryRulesQueryParams = {}) {
-  const response = await axiosInstance.post('/regulatory-rules/export/', params, {
-    responseType: 'blob',
-  })
-
+export async function deleteRegulatoryRule(ruleId: string): Promise<void> {
+  const response = await axiosInstance.delete(`/api/regulatory-rules/rules/${ruleId}/`)
   return response.data
 }
