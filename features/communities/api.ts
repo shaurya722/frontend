@@ -80,9 +80,9 @@ export async function fetchCommunities(params: CommunitiesQueryParams = {}): Pro
 /**
  * Fetch single community by ID
  */
-export async function fetchCommunityById(id: string): Promise<Community> {
-  const response = await axiosInstance.get<ApiResponse<Community>>(`/communities/${id}/`)
-  return response.data.data
+export async function fetchCommunityById(id: string): Promise<CommunityCensus> {
+  const response = await axiosInstance.get<CommunityCensus>(`/api/community/communities/${id}/`)
+  return response.data
 }
 
 /**
@@ -105,7 +105,7 @@ export async function updateCommunity(id: string, data: UpdateCommunityDto) {
  * Delete community
  */
 export async function deleteCommunity(id: string) {
-  const response = await axiosInstance.delete<ApiResponse<void>>(`/communities/${id}/`)
+  const response = await axiosInstance.delete<ApiResponse<void>>(`/api/community/communities/${id}/`)
   return response.data
 }
 

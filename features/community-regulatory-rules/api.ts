@@ -63,8 +63,8 @@ export async function fetchCommunityRegulatoryRules(
  * Fetch single community regulatory rule by ID
  */
 export async function fetchCommunityRegulatoryRuleById(id: string): Promise<CommunityRegulatoryRule> {
-  const response = await axiosInstance.get<ApiResponse<CommunityRegulatoryRule>>(`/api/regulatory-rules/rules/${id}/`)
-  return response.data.data
+  const response = await axiosInstance.get<CommunityRegulatoryRule>(`/api/regulatory-rules/rules/${id}/`)
+  return response.data
 }
 
 /**

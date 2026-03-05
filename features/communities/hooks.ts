@@ -30,10 +30,10 @@ export function useCommunities(params: CommunitiesQueryParams = {}) {
 /**
  * Hook to fetch single community by ID
  */
-export function useCommunity(id: string, enabled = true) {
+export function useCommunity(id: string | number, enabled = true) {
   return useQuery({
     queryKey: [COMMUNITIES_QUERY_KEY, id],
-    queryFn: () => fetchCommunityById(id),
+    queryFn: () => fetchCommunityById(id.toString()),
     enabled: enabled && !!id,
     // staleTime: 30000,
   })

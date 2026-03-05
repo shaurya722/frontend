@@ -52,6 +52,8 @@ import {
   ChevronRight,
   ArrowUpDown,
   CheckCircle,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 
 import { useCommunities, useCreateCommunity, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears } from '@/features/communities'
@@ -83,21 +85,24 @@ function EditCommunityForm({
   loading,
   onCancel
 }: {
-  community: Community
+  community: CommunityCensus
   regions: Region[]
   onSubmit: (data: any) => void
   loading: boolean
   onCancel: () => void
 }) {
+  // Find region ID by name
+  const regionId = regions.find(r => r.name === community.region)?.id || ''
+
   const editForm = useForm({
     resolver: yupResolver(communitySchema),
     defaultValues: {
-      name: community.name,
+      name: community.community_name,
       population: community.population || 0,
       tier: community.tier || 'Single',
       province: community.province || 'Ontario',
-      region: community.region_detail?.id || '',
-      census_year: community.census_year || 2021,
+      region: regionId,
+      census_year: community.census_year_value || 2021,
     },
   })
 
@@ -224,7 +229,7 @@ export default function CommunitiesManagement() {
 
   // Dialog state
   const [editingCommunity, setEditingCommunity] = useState<CommunityCensus | null>(null)
-  const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null)
+  const [editingCommunityId, setEditingCommunityId] = useState<string | number| null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [communityToDelete, setCommunityToDelete] = useState<CommunityCensus | null>(null)
@@ -278,6 +283,8 @@ export default function CommunitiesManagement() {
   const { data: communitiesResponse, isLoading, error, refetch } = useCommunities(queryParams)
 
   // Fetch regions using React Query hook
+  const { data: regionsData, isLoading: isRegionsLoading } = useRegions()
+
   // Fetch census years
   const { data: censusYearsData, isLoading: isCensusYearsLoading } = useCensusYears()
 
@@ -335,7 +342,7 @@ export default function CommunitiesManagement() {
   }
 
   const handleEditCommunity = (community: CommunityCensus) => {
-    setEditingCommunityId(community.community)
+    setEditingCommunityId(community.id)
     setEditingCommunity(community) // Keep for fallback if API fails
   }
 
@@ -380,7 +387,7 @@ export default function CommunitiesManagement() {
     if (!communityToDelete) return
 
     try {
-      await deleteMutation.mutateAsync(communityToDelete.community)
+      await deleteMutation.mutateAsync(communityToDelete.id.toString())
       setSuccessMessage(`Community "${communityToDelete.community_name}" deleted successfully`)
       setIsDeleteDialogOpen(false)
       setCommunityToDelete(null)
@@ -513,15 +520,27 @@ export default function CommunitiesManagement() {
               <TableHeader>
                 <TableRow>
                   <TableHead>
-                    <Button variant="ghost" size="sm" onClick={() => handleSort('name')}>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                       Name
-                      <ArrowUpDown className="ml-2 h-4 w-4" />
+                      {sortBy === 'name' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
                     </Button>
                   </TableHead>
                   <TableHead>
-                    <Button variant="ghost" size="sm" onClick={() => handleSort('population')}>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('population')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                       Population
-                      <ArrowUpDown className="ml-2 h-4 w-4" />
+                      {sortBy === 'population' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
                     </Button>
                   </TableHead>
                   {/* <TableHead>Tier</TableHead> */}
@@ -707,7 +726,7 @@ export default function CommunitiesManagement() {
           ) : editingCommunityData ? (
             <EditCommunityForm
               community={editingCommunityData}
-              regions={[]}
+              regions={regionsData || []}
               onSubmit={handleSaveEdit}
               loading={updateMutation.isPending}
               onCancel={() => {

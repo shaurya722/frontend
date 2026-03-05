@@ -639,16 +639,7 @@ export default function RegulatoryRulesManagement({
                     </Button>
                   </TableHead>
                   <TableHead>
-                    <Button variant="ghost" size="sm" onClick={() => handleSort('year')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                       Census Year
-                      {sortBy === 'year' ? (
-                        sortOrder === 1 ? 
-                          <ChevronUp className="ml-2 h-4 w-4" /> : 
-                          <ChevronDown className="ml-2 h-4 w-4" />
-                      ) : (
-                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
-                      )}
-                    </Button>
                   </TableHead>
                   <TableHead>Parameters</TableHead>
                   <TableHead>Status</TableHead>
@@ -710,9 +701,16 @@ export default function RegulatoryRulesManagement({
                         <Button
                           variant='ghost'
                           size='sm'
-                          onClick={() => handleDeleteRule(rule.id, rule.name)}
+                          onClick={async () => {
+                            try {
+                              await deleteMutation.mutateAsync(rule.id)
+                              setSuccessMessage(`Regulatory rule "${rule.name}" deleted successfully`)
+                            } catch (error: any) {
+                              setErrorMessage(error.message || 'Failed to delete regulatory rule')
+                            }
+                          }}
                           className='text-red-600 hover:text-red-700 hover:bg-red-50'
-                          disabled={isLoading}
+                          disabled={isLoading || deleteMutation.isPending}
                         >
                           <Trash2 className='h-4 w-4' />
                         </Button>
@@ -922,53 +920,51 @@ export default function RegulatoryRulesManagement({
               <div className='grid grid-cols-2 gap-4'>
                 <div className='space-y-2'>
                   <Label htmlFor='edit-category'>Category</Label>
-                  <Controller
-                    name="category"
-                    control={editForm.control}
-                    render={({ field }: any) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value='HSP'>
-                            HSP (Hazardous & Special Products)
-                          </SelectItem>
-                          <SelectItem value='EEE'>
-                            EEE (Electrical & Electronic Equipment)
-                          </SelectItem>
-                          <SelectItem value='Offset'>Offset</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
+                  <Select
+                    key={editForm.watch('category')}
+                    value={editForm.watch('category')}
+                    onValueChange={(value) => editForm.setValue('category', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {editForm.watch('category') === 'HSP' ? 'HSP (Hazardous & Special Products)' :
+                         editForm.watch('category') === 'EEE' ? 'EEE (Electrical & Electronic Equipment)' :
+                         editForm.watch('category') === 'Offset' ? 'Offset' : 'Select Category'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='HSP'>
+                        HSP (Hazardous & Special Products)
+                      </SelectItem>
+                      <SelectItem value='EEE'>
+                        EEE (Electrical & Electronic Equipment)
+                      </SelectItem>
+                      <SelectItem value='Offset'>Offset</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className='space-y-2'>
                   <Label htmlFor='edit-rule-type'>Rule Type</Label>
-                  <Controller
-                    name="rule_type"
-                    control={editForm.control}
-                    render={({ field }: any) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value='Site Requirements'>
-                            Site Requirements
-                          </SelectItem>
-                          <SelectItem value='Events'>Events</SelectItem>
-                          <SelectItem value='Reallocation'>Reallocation</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
+                  <Select
+                    key={editForm.watch('rule_type')}
+                    value={editForm.watch('rule_type')}
+                    onValueChange={(value) => editForm.setValue('rule_type', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {editForm.watch('rule_type') === 'Site Requirements' ? 'Site Requirements' :
+                         editForm.watch('rule_type') === 'Events' ? 'Events' :
+                         editForm.watch('rule_type') === 'Reallocation' ? 'Reallocation' : 'Select Rule Type'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='Site Requirements'>
+                        Site Requirements
+                      </SelectItem>
+                      <SelectItem value='Events'>Events</SelectItem>
+                      <SelectItem value='Reallocation'>Reallocation</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
