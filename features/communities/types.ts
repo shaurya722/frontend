@@ -28,20 +28,47 @@ export interface Community {
   updated_at: string
 }
 
+export interface CommunityCensus {
+  id: number
+  community: string
+  community_name: string
+  census_year: number
+  census_year_value: number
+  population: number
+  tier: string
+  region: string
+  zone: string
+  province: string
+  is_active: boolean
+  start_date: string
+  end_date: string
+  created_at: string
+  updated_at: string
+}
+
 export interface CommunitiesFilters {
   tier?: string
   province?: string
   census_year?: number
+  status?: string
+  region?: string
+  min_population?: number
+  max_population?: number
+  is_active?: boolean
 }
 
 export interface CommunitiesQueryParams {
   page?: number
   limit?: number
   search?: string
-  searchFields?: string[]
-  filters?: CommunitiesFilters
-  sort?: 1 | -1
-  sortBy?: string
+  year?: number
+  tier?: string
+  status?: string
+  region?: string
+  min_population?: number
+  max_population?: number
+  is_active?: boolean
+  sort?: string
 }
 
 export interface CommunitiesRequestBody {
@@ -53,15 +80,10 @@ export interface CommunitiesRequestBody {
 }
 
 export interface PaginatedResponse<T> {
-  docs: T[]
-  hasNextPage: boolean
-  hasPrevPage: boolean
-  limit: number
-  nextPage: number | null
-  page: number
-  prevPage: number | null
-  totalDocs: number
-  totalPages: number
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
 }
 
 export interface ApiResponse<T> {

@@ -54,8 +54,9 @@ import {
 } from 'lucide-react'
 
 import { useCommunities, useCreateCommunity, useUpdateCommunity, useDeleteCommunity, useCommunity } from '@/features/communities'
+import type { Community, CommunityCensus } from '@/features/communities'
 import { useRegions } from '@/features/regions'
-import type { Community } from '@/features/communities'
+import type { Region } from '@/features/regions'
 
 // Validation schema
 const communitySchema = yup.object().shape({
@@ -71,13 +72,6 @@ interface UserData {
   username: string
   name: string
   role: string
-}
-
-interface Region {
-  id: string
-  name: string
-  zone_id: string
-  zone_name: string
 }
 
 // Edit Community Form Component
@@ -227,11 +221,11 @@ export default function CommunitiesManagement() {
   const [sortBy, setSortBy] = useState('created_at')
   
   // Dialog state
-  const [editingCommunity, setEditingCommunity] = useState<Community | null>(null)
+  const [editingCommunity, setEditingCommunity] = useState<CommunityCensus | null>(null)
   const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [communityToDelete, setCommunityToDelete] = useState<Community | null>(null)
+  const [communityToDelete, setCommunityToDelete] = useState<CommunityCensus | null>(null)
   
   // Form state - Remove old state management
   // const [editForm, setEditForm] = useState({...})
@@ -266,22 +260,16 @@ export default function CommunitiesManagement() {
 
   // Build query params for React Query
   const queryParams = useMemo(() => {
-    const filters: any = {}
-    if (tierFilter !== 'all') filters.tier = tierFilter
-    if (regionFilter !== 'all') filters.region = regionFilter
-    if (provinceFilter !== 'all') filters.province = provinceFilter
-    if (censusYearFilter !== 'all') filters.census_year = parseInt(censusYearFilter)
-
     return {
       page,
       limit: pageSize,
       search: debouncedSearch || undefined,
-      searchFields: ['name', 'province'], // Search in name and province fields
-      filters: Object.keys(filters).length > 0 ? filters : undefined,
-      sort: sortOrder,
-      sortBy,
+      year: censusYearFilter !== 'all' ? parseInt(censusYearFilter) : undefined,
+      tier: tierFilter !== 'all' ? tierFilter : undefined,
+      region: regionFilter !== 'all' ? regionFilter : undefined,
+      sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
     }
-  }, [page, pageSize, debouncedSearch, tierFilter, regionFilter, provinceFilter, censusYearFilter, sortOrder, sortBy])
+  }, [page, pageSize, debouncedSearch, tierFilter, regionFilter, censusYearFilter, sortOrder, sortBy])
 
   // Fetch communities using React Query
   const { data: communitiesResponse, isLoading, error, refetch } = useCommunities(queryParams)
@@ -299,13 +287,10 @@ export default function CommunitiesManagement() {
 
   // Extract data from response
   const communitiesData = useMemo(() => {
-    if (!communitiesResponse?.data) {
-      return { docs: [], totalDocs: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false }
-    }
-    return communitiesResponse.data
+    return communitiesResponse || { count: 0, next: null, previous: null, results: [] }
   }, [communitiesResponse])
 
-  const communities = communitiesData.docs || []
+  const communities = communitiesData.results || []
 
   // Show success/error messages temporarily
   useEffect(() => {
@@ -338,8 +323,8 @@ export default function CommunitiesManagement() {
     }
   }
 
-  const handleEditCommunity = (community: Community) => {
-    setEditingCommunityId(community.id.toString())
+  const handleEditCommunity = (community: CommunityCensus) => {
+    setEditingCommunityId(community.community)
     setEditingCommunity(community) // Keep for fallback if API fails
   }
 
@@ -358,7 +343,7 @@ export default function CommunitiesManagement() {
       }
 
       await updateMutation.mutateAsync({
-        id: editingCommunity.id.toString(),
+        id: editingCommunity.community,
         data: apiData,
       })
 
@@ -375,7 +360,7 @@ export default function CommunitiesManagement() {
     onSubmitEdit(data)
   }
 
-  const handleDeleteCommunity = (community: Community) => {
+  const handleDeleteCommunity = (community: CommunityCensus) => {
     setCommunityToDelete(community)
     setIsDeleteDialogOpen(true)
   }
@@ -384,8 +369,8 @@ export default function CommunitiesManagement() {
     if (!communityToDelete) return
 
     try {
-      await deleteMutation.mutateAsync(communityToDelete.id.toString())
-      setSuccessMessage(`Community "${communityToDelete.name}" deleted successfully`)
+      await deleteMutation.mutateAsync(communityToDelete.community)
+      setSuccessMessage(`Community "${communityToDelete.community_name}" deleted successfully`)
       setIsDeleteDialogOpen(false)
       setCommunityToDelete(null)
     } catch (error: any) {
@@ -544,14 +529,14 @@ export default function CommunitiesManagement() {
                 ) : (
                   communities.map((community) => (
                     <TableRow key={community.id}>
-                      <TableCell className="font-medium">{community.name}</TableCell>
+                      <TableCell className="font-medium">{community.community_name}</TableCell>
                       <TableCell>{community.population?.toLocaleString() || 'N/A'}</TableCell>
                       <TableCell>
                         <Badge className={getTierBadgeColor(community.tier)}>
                           {community.tier || 'N/A'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{community.region_detail?.name || 'N/A'}</TableCell>
+                      <TableCell>{community.region || 'N/A'}</TableCell>
                       <TableCell>{community.province || 'N/A'}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -582,7 +567,7 @@ export default function CommunitiesManagement() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <div className="text-sm text-gray-600">
-                Showing {communities.length} of {communitiesData.totalDocs} communities
+                Showing {communities.length} of {communitiesData.count} communities
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Show:</span>
@@ -606,7 +591,7 @@ export default function CommunitiesManagement() {
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(page - 1)}
-                  disabled={!communitiesData.hasPrevPage || isLoading}
+                  disabled={!communitiesData.previous || isLoading}
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Previous
@@ -615,7 +600,7 @@ export default function CommunitiesManagement() {
                 {/* Page Numbers */}
                 <div className="flex items-center gap-1">
                   {(() => {
-                    const totalPages = communitiesData.totalPages || 1
+                    const totalPages = Math.ceil(communitiesData.count / pageSize) || 1
                     const currentPage = page
                     const maxVisiblePages = 5
                     const halfVisible = Math.floor(maxVisiblePages / 2)
@@ -652,7 +637,7 @@ export default function CommunitiesManagement() {
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(page + 1)}
-                  disabled={!communitiesData.hasNextPage || isLoading}
+                  disabled={!communitiesData.next || isLoading}
                 >
                   Next
                   <ChevronRight className="h-4 w-4" />
@@ -815,7 +800,7 @@ export default function CommunitiesManagement() {
           <DialogHeader>
             <DialogTitle>Delete Community</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{communityToDelete?.name}"? This action cannot be undone.
+              Are you sure you want to delete "{communityToDelete?.community_name}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
