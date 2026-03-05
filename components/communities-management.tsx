@@ -58,7 +58,6 @@ import {
 
 import { useCommunities, useCreateCommunity, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears } from '@/features/communities'
 import type { Community, CommunityCensus } from '@/features/communities'
-import { useRegions } from '@/features/regions'
 import type { Region } from '@/features/regions'
 
 // Validation schema
@@ -282,9 +281,6 @@ export default function CommunitiesManagement() {
   // Fetch communities using React Query
   const { data: communitiesResponse, isLoading, error, refetch } = useCommunities(queryParams)
 
-  // Fetch regions using React Query hook
-  const { data: regionsData, isLoading: isRegionsLoading } = useRegions()
-
   // Fetch census years
   const { data: censusYearsData, isLoading: isCensusYearsLoading } = useCensusYears()
 
@@ -306,7 +302,7 @@ export default function CommunitiesManagement() {
   // Set latest census year as default when data loads
   useEffect(() => {
     if (censusYearsData?.years && censusYearsData.years.length > 0) {
-      const latestYear = Math.max(...censusYearsData.years.map(y => y.year))
+      const latestYear = Math.max(...censusYearsData.years.map((y: { year: number }) => y.year))
       setSelectedCensusYear(latestYear.toString())
     }
   }, [censusYearsData])
@@ -505,7 +501,7 @@ export default function CommunitiesManagement() {
                 <SelectValue placeholder="Filter by census year" />
               </SelectTrigger>
               <SelectContent>
-                {censusYearsData?.years?.map((year) => (
+                {censusYearsData?.years?.sort((a: { year: number; id: number }, b: { year: number; id: number }) => b.year - a.year).map((year: { year: number; id: number }) => (
                   <SelectItem key={year.id} value={year.year.toString()}>
                     {year.year}
                   </SelectItem>
@@ -582,11 +578,16 @@ export default function CommunitiesManagement() {
                         {community.census_year_value}
                       </TableCell>
                       <TableCell>
+                        {community.is_active === true ? (
                         <Badge className='bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'>
                           <CheckCircle className='h-3 w-3 mr-1' />
                           Active
                         </Badge>
+                      ) : (
+                        <Badge variant='secondary'>Inactive</Badge>
+                      )}
                       </TableCell>
+                      
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button
@@ -726,7 +727,7 @@ export default function CommunitiesManagement() {
           ) : editingCommunityData ? (
             <EditCommunityForm
               community={editingCommunityData}
-              regions={regionsData || []}
+              regions={[]}
               onSubmit={handleSaveEdit}
               loading={updateMutation.isPending}
               onCancel={() => {
