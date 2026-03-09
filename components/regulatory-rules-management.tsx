@@ -701,16 +701,9 @@ export default function RegulatoryRulesManagement({
                         <Button
                           variant='ghost'
                           size='sm'
-                          onClick={async () => {
-                            try {
-                              await deleteMutation.mutateAsync(rule.id)
-                              setSuccessMessage(`Regulatory rule "${rule.name}" deleted successfully`)
-                            } catch (error: any) {
-                              setErrorMessage(error.message || 'Failed to delete regulatory rule')
-                            }
-                          }}
+                          onClick={() => handleDeleteRule(rule.id, rule.name)}
                           className='text-red-600 hover:text-red-700 hover:bg-red-50'
-                          disabled={isLoading || deleteMutation.isPending}
+                          disabled={isLoading}
                         >
                           <Trash2 className='h-4 w-4' />
                         </Button>

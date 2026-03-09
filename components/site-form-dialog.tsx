@@ -39,7 +39,7 @@ export interface CollectionSite {
   postal_code?: string
   community?: string
   region_district?: string
-  service_area?: number
+  service_area?: number | string
   latitude?: number
   longitude?: number
   active_dates?: string

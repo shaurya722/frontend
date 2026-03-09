@@ -72,6 +72,8 @@ const communitySchema = yup.object().shape({
   zone: yup.string().required('Zone is required'),
   census_year: yup.number().required('Census year is required').min(1900, 'Year must be 1900 or later').max(new Date().getFullYear() + 10, 'Year cannot be too far in the future'),
   is_active: yup.boolean().required('Active status is required'),
+  start_date: yup.date().nullable(),
+  end_date: yup.date().nullable(),
 })
 
 interface UserData {
@@ -107,6 +109,8 @@ function CommunityForm({
       zone: community.zone || '',
       census_year: community.census_year_value || 2021,
       is_active: community.is_active,
+      start_date: community.start_date ? new Date(community.start_date) : null,
+      end_date: community.end_date ? new Date(community.end_date) : null,
     } : {
       name: '',
       population: 0,
@@ -116,6 +120,8 @@ function CommunityForm({
       zone: '',
       census_year: new Date().getFullYear(),
       is_active: true,
+      start_date: null,
+      end_date: null,
     },
   })
 
@@ -223,6 +229,32 @@ function CommunityForm({
           <p className="text-sm text-red-500 mt-1">{form.formState.errors.census_year.message}</p>
         )}
       </div>
+      <div className='flex gap-2'>
+      <div className='w-full'>
+        <Label htmlFor={`${mode}-start-date`}>Start Date</Label>
+        <Input
+          id={`${mode}-start-date`}
+          type="date"
+          className={form.formState.errors.start_date ? 'border-red-500' : ''}
+          {...form.register('start_date')}
+        />
+        {form.formState.errors.start_date && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.start_date.message}</p>
+        )}
+      </div>
+      <div className='w-full'>
+        <Label htmlFor={`${mode}-end-date`}>End Date</Label>
+        <Input
+          id={`${mode}-end-date`}
+          type="date"
+          className={form.formState.errors.end_date ? 'border-red-500' : ''}
+          {...form.register('end_date')}
+        />
+        {form.formState.errors.end_date && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.end_date.message}</p>
+        )}
+      </div>
+      </div>
       <div className="flex items-center space-x-2">
         <Checkbox
           id={`${mode}-is-active`}
@@ -264,6 +296,7 @@ export default function CommunitiesManagement() {
   // Dialog state
   const [dialogMode, setDialogMode] = useState<'edit' | 'create' | null>(null)
   const [selectedCommunity, setSelectedCommunity] = useState<CommunityCensus | null>(null)
+  const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null)
 
   // Delete dialog state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -324,8 +357,8 @@ export default function CommunitiesManagement() {
 
   // Fetch regions
 
-  // Fetch single community for editing (deprecated)
-  // const { data: editingCommunityData, isLoading: editingCommunityLoading, error: editingCommunityError } = useCommunity(editingCommunityId || '', !!editingCommunityId)
+  // Fetch single community for editing
+  const { data: editingCommunityData, isLoading: editingCommunityLoading, error: editingCommunityError } = useCommunity(editingCommunityId || '', !!editingCommunityId)
 
   // Mutations
   const createMutation = useCreateCommunityCensus()
@@ -378,7 +411,7 @@ export default function CommunitiesManagement() {
   }
 
   const handleEditCommunity = (community: CommunityCensus) => {
-    setSelectedCommunity(community)
+    setEditingCommunityId(community.id.toString())
     setDialogMode('edit')
   }
 
@@ -388,7 +421,7 @@ export default function CommunitiesManagement() {
   }
 
   const onSubmitEdit = async (data: any) => {
-    if (!selectedCommunity) return
+    if (!editingCommunityData) return
 
     try {
       // Transform data to match API format
@@ -399,15 +432,18 @@ export default function CommunitiesManagement() {
         region: data.region,
         province: data.province,
         census_year: data.census_year,
+        start_date: data.start_date,
+        end_date: data.end_date,
       }
 
       await updateMutation.mutateAsync({
-        id: selectedCommunity.community,
+        id: editingCommunityData.id.toString(),
         data: apiData,
       })
 
       setDialogMode(null)
       setSelectedCommunity(null)
+      setEditingCommunityId(null)
       setSuccessMessage(`Community "${data.name}" updated successfully`)
     } catch (error: any) {
       setErrorMessage(error.message || 'Failed to update community')
@@ -426,6 +462,8 @@ export default function CommunitiesManagement() {
         province: data.province,
         census_year: data.census_year,
         is_active: data.is_active,
+        start_date: data.start_date,
+        end_date: data.end_date,
       }
 
       await createMutation.mutateAsync(apiData)
@@ -441,6 +479,7 @@ export default function CommunitiesManagement() {
   const handleCloseDialog = () => {
     setDialogMode(null)
     setSelectedCommunity(null)
+    setEditingCommunityId(null)
   }
 
   const handleDeleteCommunity = (community: CommunityCensus) => {
@@ -743,7 +782,7 @@ export default function CommunitiesManagement() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogMode !== null} onOpenChange={(open) => {
+      <Dialog open={dialogMode !== null && (dialogMode !== 'edit' || !editingCommunityLoading)} onOpenChange={(open) => {
         if (!open) {
           handleCloseDialog()
         }
@@ -756,10 +795,10 @@ export default function CommunitiesManagement() {
 
           <CommunityForm
             mode={dialogMode!}
-            community={selectedCommunity ?? undefined}
+            community={dialogMode === 'edit' ? editingCommunityData : selectedCommunity ?? undefined}
             censusYearsData={censusYearsData}
             onSubmit={dialogMode === 'edit' ? onSubmitEdit : onSubmitCreate}
-            loading={dialogMode === 'edit' ? updateMutation.isPending : createMutation.isPending}
+            loading={dialogMode === 'edit' ? (updateMutation.isPending || editingCommunityLoading) : createMutation.isPending}
             onCancel={handleCloseDialog}
           />
         </DialogContent>

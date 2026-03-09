@@ -1,5 +1,5 @@
 import axiosInstance from '@/lib/axios-instance'
-import { PaginatedSitesResponse, SitesFilters } from "./types";
+import { PaginatedSitesResponse, SitesFilters, Site } from "./types";
 
 export const fetchSites = async (filters: SitesFilters = {}): Promise<PaginatedSitesResponse> => {
   const queryParams = new URLSearchParams();
@@ -16,4 +16,13 @@ export const fetchSites = async (filters: SitesFilters = {}): Promise<PaginatedS
 
   const response = await axiosInstance.get(`/api/sites?${queryParams.toString()}`);
   return response.data;
+};
+
+export const fetchSiteById = async (id: number): Promise<Site> => {
+  const response = await axiosInstance.get(`/api/sites/${id}`);
+  return response.data;
+};
+
+export const deleteSiteById = async (id: number): Promise<void> => {
+  await axiosInstance.delete(`/api/sites/${id}`);
 };

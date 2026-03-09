@@ -80,7 +80,7 @@ import {
   Building2,
 } from 'lucide-react'
 
-import { useSites } from '@/features/sites/hooks'
+import { useSites, useSite, useDeleteSite } from '@/features/sites/hooks'
 import { SitesFilters } from '@/features/sites/types'
 import { useCensusYears } from '@/features/communities/hooks'
 
@@ -99,6 +99,15 @@ export default function SiteManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'add' | 'edit'>('add')
   const [selectedSite, setSelectedSite] = useState<CollectionSite | null>(null)
+  const [editingSiteId, setEditingSiteId] = useState<number | null>(null)
+
+  // Delete dialog state
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [siteToDelete, setSiteToDelete] = useState<any | null>(null)
+
+  // Success/Error messages
+  const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   const { data: censusYears } = useCensusYears()
 
@@ -124,11 +133,68 @@ export default function SiteManagement() {
 
   const { data, isLoading, error } = useSites(filters)
 
+  const { data: siteData, isLoading: siteLoading } = useSite(editingSiteId || undefined)
+
+  // Mutations
+  const deleteMutation = useDeleteSite()
+
   const totalSites = data?.count || 0
   const activeSites = data?.results.filter(site => site.is_active).length || 0
   const inactiveSites = totalSites - activeSites
   const scheduledSites = data?.results.filter(site => site.site_start_date && new Date(site.site_start_date) > new Date()).length || 0
   const totalPages = Math.ceil(totalSites / limit)
+
+  useEffect(() => {
+    if (siteData && dialogMode === 'edit') {
+      const collectionSite: CollectionSite = {
+        id: siteData.id.toString(),
+        name: siteData.site_name,
+        service_partner: siteData.service_partner || '',
+        site_type: siteData.site_type,
+        operator_type: siteData.operator_type,
+        address: [siteData.address_line_1, siteData.address_line_2].filter(Boolean).join(', ') || '',
+        municipality_id: siteData.community || '',
+        status: siteData.is_active ? 'Active' : 'Inactive',
+        address_line1: siteData.address_line_1 || '',
+        address_line2: siteData.address_line_2 || '',
+        city: siteData.address_city || '',
+        state_province: siteData.region || '',
+        postal_code: siteData.address_postal_code || '',
+        community: siteData.community_name || '',
+        region_district: siteData.region || '',
+        service_area: siteData.service_area,
+        latitude: parseFloat(siteData.address_latitude) || 0,
+        longitude: parseFloat(siteData.address_longitude) || 0,
+        active_dates: siteData.site_start_date || '',
+        programs: [], // Map from site data
+        materials_collected: [], // Map from site data
+        collection_scope: [], // Map from site data
+      }
+
+      // Map programs
+      if (siteData.program_paint) collectionSite.programs.push('Paint')
+      if (siteData.program_lights) collectionSite.programs.push('Lights')
+      if (siteData.program_solvents) collectionSite.programs.push('Solvents')
+      if (siteData.program_pesticides) collectionSite.programs.push('Pesticides')
+      if (siteData.program_fertilizers) collectionSite.programs.push('Fertilizers')
+
+      setSelectedSite(collectionSite)
+    }
+  }, [siteData, dialogMode])
+
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(''), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [successMessage])
+
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(''), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [errorMessage])
 
   // Dialog handlers
   const handleAddSite = () => {
@@ -137,42 +203,9 @@ export default function SiteManagement() {
     setIsDialogOpen(true)
   }
 
-  const handleEditSite = (site: any) => {
-    // Transform site data to match CollectionSite interface
-    const collectionSite: CollectionSite = {
-      id: site.id,
-      name: site.site_name,
-      service_partner: site.service_partner || '',
-      site_type: site.site_type,
-      operator_type: site.operator_type,
-      address: site.address || '',
-      municipality_id: site.community_id || '',
-      status: site.is_active ? 'Active' : 'Inactive',
-      address_line1: site.address_line1 || '',
-      address_line2: site.address_line2 || '',
-      city: site.address_city || '',
-      state_province: site.address_province || '',
-      postal_code: site.address_postal_code || '',
-      community: site.community_name || '',
-      region_district: site.region || '',
-      service_area: site.service_area,
-      latitude: site.latitude,
-      longitude: site.longitude,
-      active_dates: site.site_start_date || '',
-      programs: [], // Map from site data
-      materials_collected: [], // Map from site data
-      collection_scope: [], // Map from site data
-    }
-
-    // Map programs
-    if (site.program_paint) collectionSite.programs.push('Paint')
-    if (site.program_lights) collectionSite.programs.push('Lights')
-    if (site.program_solvents) collectionSite.programs.push('Solvents')
-    if (site.program_pesticides) collectionSite.programs.push('Pesticides')
-    if (site.program_fertilizers) collectionSite.programs.push('Fertilizers')
-
+  const handleEditSite = (siteId: number) => {
     setDialogMode('edit')
-    setSelectedSite(collectionSite)
+    setEditingSiteId(siteId)
     setIsDialogOpen(true)
   }
 
@@ -199,10 +232,41 @@ export default function SiteManagement() {
   const handleDialogClose = () => {
     setIsDialogOpen(false)
     setSelectedSite(null)
+    setEditingSiteId(null)
+  }
+
+  const handleDeleteSite = (site: any) => {
+    setSiteToDelete(site)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteSite = async () => {
+    if (!siteToDelete) return
+
+    try {
+      await deleteMutation.mutateAsync(siteToDelete.id)
+      setSuccessMessage(`Site "${siteToDelete.site_name}" deleted successfully`)
+      setIsDeleteDialogOpen(false)
+      setSiteToDelete(null)
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Failed to delete site')
+    }
   }
 
   return (
     <div className='space-y-6'>
+      {/* Success/Error Messages */}
+      {successMessage && (
+        <Alert className="bg-green-50 border-green-200">
+          <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
+        </Alert>
+      )}
+      {errorMessage && (
+        <Alert className="bg-red-50 border-red-200">
+          <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Search & Filters */}
       <Card>
         <CardContent className='pt-6 space-y-4'>
@@ -459,10 +523,10 @@ export default function SiteManagement() {
                           </TableCell>
                           <TableCell>
                             <div className='flex items-center gap-2'>
-                              <Button variant='ghost' size='sm' onClick={() => handleEditSite(site)}>
+                              <Button variant='ghost' size='sm' onClick={() => handleEditSite(site.id)}>
                                 <Edit className='w-4 h-4' />
                               </Button>
-                              <Button variant='ghost' size='sm'>
+                              <Button variant='ghost' size='sm' onClick={() => handleDeleteSite(site)}>
                                 <Trash2 className='w-4 h-4' />
                               </Button>
                             </div>
@@ -525,8 +589,28 @@ export default function SiteManagement() {
         mode={dialogMode}
         site={selectedSite}
         onSubmit={handleSiteSubmit}
-        isLoading={false} // TODO: Connect to actual loading state
+        isLoading={dialogMode === 'edit' ? siteLoading : false}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Site</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{siteToDelete?.site_name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="outline" className='bg-black text-white hover:bg-black/70 hover:text-white' onClick={confirmDeleteSite} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
