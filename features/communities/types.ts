@@ -101,6 +101,17 @@ export interface CreateCommunityDto {
   census_year?: number
 }
 
+export interface CreateCommunityCensusDto {
+  community: string
+  census_year: number
+  population: number
+  tier: string
+  region: string
+  zone: string
+  province: string
+  is_active: boolean
+}
+
 export interface UpdateCommunityDto {
   name?: string
   population?: number

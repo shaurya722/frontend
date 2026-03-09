@@ -5,13 +5,14 @@ import {
   fetchCommunities,
   fetchCommunityById,
   createCommunity,
+  createCommunityCensus,
   updateCommunity,
   deleteCommunity,
   bulkImportCommunities,
   exportCommunities,
   fetchCensusYears,
 } from './api'
-import type { CommunitiesQueryParams, CreateCommunityDto, UpdateCommunityDto } from './types'
+import type { CommunitiesQueryParams, CreateCommunityDto, UpdateCommunityDto, CreateCommunityCensusDto } from './types'
 
 export const COMMUNITIES_QUERY_KEY = 'communities'
 
@@ -47,6 +48,21 @@ export function useCreateCommunity() {
 
   return useMutation({
     mutationFn: (data: CreateCommunityDto) => createCommunity(data),
+    onSuccess: () => {
+      // Invalidate and refetch communities list
+      queryClient.invalidateQueries({ queryKey: [COMMUNITIES_QUERY_KEY] })
+    },
+  })
+}
+
+/**
+ * Hook to create new community census data
+ */
+export function useCreateCommunityCensus() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: CreateCommunityCensusDto) => createCommunityCensus(data),
     onSuccess: () => {
       // Invalidate and refetch communities list
       queryClient.invalidateQueries({ queryKey: [COMMUNITIES_QUERY_KEY] })

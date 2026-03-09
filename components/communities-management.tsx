@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { YearPicker } from '@/components/ui/year-picker'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -56,18 +57,21 @@ import {
   ChevronDown,
 } from 'lucide-react'
 
-import { useCommunities, useCreateCommunity, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears } from '@/features/communities'
+import { useCommunities, useCreateCommunity, useCreateCommunityCensus, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears } from '@/features/communities'
 import type { Community, CommunityCensus } from '@/features/communities'
 import type { Region } from '@/features/regions'
+import { useRegions } from '@/features/regions'
 
 // Validation schema
 const communitySchema = yup.object().shape({
   name: yup.string().required('Community name is required').min(2, 'Name must be at least 2 characters'),
   population: yup.number().required('Population is required').min(1, 'Population must be at least 1').max(10000000, 'Population cannot exceed 10 million'),
-  tier: yup.string().required('Tier is required').oneOf(['Single', 'Lower', 'Upper'], 'Invalid tier selected'),
+  tier: yup.string().required('Tier is required'),
   province: yup.string().required('Province is required'),
   region: yup.string().required('Region is required'),
+  zone: yup.string().required('Zone is required'),
   census_year: yup.number().required('Census year is required').min(1900, 'Year must be 1900 or later').max(new Date().getFullYear() + 10, 'Year cannot be too far in the future'),
+  is_active: yup.boolean().required('Active status is required'),
 })
 
 interface UserData {
@@ -76,32 +80,42 @@ interface UserData {
   role: string
 }
 
-// Edit Community Form Component
-function EditCommunityForm({
+// Community Form Component (for both edit and create)
+function CommunityForm({
+  mode,
   community,
-  regions,
+  censusYearsData,
   onSubmit,
   loading,
   onCancel
 }: {
-  community: CommunityCensus
-  regions: Region[]
+  mode: 'edit' | 'create'
+  community?: CommunityCensus
+  censusYearsData: { years: Array<{ id: number; year: number }> } | undefined
   onSubmit: (data: any) => void
   loading: boolean
   onCancel: () => void
 }) {
-  // Find region ID by name
-  const regionId = regions.find(r => r.name === community.region)?.id || ''
-
-  const editForm = useForm({
+  const form = useForm({
     resolver: yupResolver(communitySchema),
-    defaultValues: {
+    defaultValues: mode === 'edit' && community ? {
       name: community.community_name,
       population: community.population || 0,
-      tier: community.tier || 'Single',
-      province: community.province || 'Ontario',
-      region: regionId,
+      tier: community.tier || '1',
+      province: community.province || 'BC',
+      region: community.region || '',
+      zone: community.zone || '',
       census_year: community.census_year_value || 2021,
+      is_active: community.is_active,
+    } : {
+      name: '',
+      population: 0,
+      tier: '1',
+      province: 'BC',
+      region: '',
+      zone: '',
+      census_year: new Date().getFullYear(),
+      is_active: true,
     },
   })
 
@@ -110,98 +124,119 @@ function EditCommunityForm({
   }
 
   return (
-    <form onSubmit={editForm.handleSubmit(handleFormSubmit)} className="space-y-4">
+    <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
       <div>
-        <Label htmlFor="edit-name">Name</Label>
+        <Label htmlFor={`${mode}-name`}>Name *</Label>
         <Input
-          id="edit-name"
-          className={editForm.formState.errors.name ? 'border-red-500' : ''}
-          {...editForm.register('name')}
+          id={`${mode}-name`}
+          className={form.formState.errors.name ? 'border-red-500' : ''}
+          {...form.register('name')}
         />
-        {editForm.formState.errors.name && (
-          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.name.message}</p>
+        {form.formState.errors.name && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.name.message}</p>
         )}
       </div>
       <div>
-        <Label htmlFor="edit-population">Population</Label>
+        <Label htmlFor={`${mode}-population`}>Population</Label>
         <Input
-          id="edit-population"
+          id={`${mode}-population`}
           type="number"
-          className={editForm.formState.errors.population ? 'border-red-500' : ''}
-          {...editForm.register('population')}
+          className={form.formState.errors.population ? 'border-red-500' : ''}
+          {...form.register('population')}
         />
-        {editForm.formState.errors.population && (
-          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.population.message}</p>
+        {form.formState.errors.population && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.population.message}</p>
         )}
       </div>
       <div>
-        <Label htmlFor="edit-tier">Tier</Label>
+        <Label htmlFor={`${mode}-tier`}>Tier</Label>
         <Select
-          value={editForm.watch('tier')}
-          onValueChange={(value) => editForm.setValue('tier', value as 'Single' | 'Lower' | 'Upper')}
+          value={form.watch('tier')}
+          onValueChange={(value) => form.setValue('tier', value)}
         >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="Upper">Upper Tier</SelectItem>
-            <SelectItem value="Lower">Lower Tier</SelectItem>
-            <SelectItem value="Single">Single Tier</SelectItem>
+            <SelectItem value="1">Tier 1</SelectItem>
+            <SelectItem value="2">Tier 2</SelectItem>
+            <SelectItem value="3">Tier 3</SelectItem>
           </SelectContent>
         </Select>
-        {editForm.formState.errors.tier && (
-          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.tier.message}</p>
+        {form.formState.errors.tier && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.tier.message}</p>
         )}
       </div>
       <div>
-        <Label htmlFor="edit-region">Region</Label>
+        <Label htmlFor={`${mode}-region`}>Region</Label>
+        <Input
+          id={`${mode}-region`}
+          className={form.formState.errors.region ? 'border-red-500' : ''}
+          {...form.register('region')}
+          placeholder="Enter region"
+        />
+        {form.formState.errors.region && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.region.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor={`${mode}-province`}>Province</Label>
+        <Input
+          id={`${mode}-province`}
+          className={form.formState.errors.province ? 'border-red-500' : ''}
+          {...form.register('province')}
+        />
+        {form.formState.errors.province && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.province.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor={`${mode}-zone`}>Zone</Label>
+        <Input
+          id={`${mode}-zone`}
+          className={form.formState.errors.zone ? 'border-red-500' : ''}
+          {...form.register('zone')}
+          placeholder="Enter zone"
+        />
+        {form.formState.errors.zone && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.zone.message}</p>
+        )}
+      </div>
+      <div>
+        <Label htmlFor={`${mode}-census-year`}>Census Year</Label>
         <Select
-          value={editForm.watch('region')}
-          onValueChange={(value) => editForm.setValue('region', value)}
+          value={form.watch('census_year').toString()}
+          onValueChange={(value) => form.setValue('census_year', parseInt(value))}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Select region" />
+            <SelectValue placeholder="Select census year" />
           </SelectTrigger>
           <SelectContent>
-            {regions.map((region) => (
-              <SelectItem key={region.id} value={region.id}>
-                {region.name}
+            {censusYearsData?.years?.sort((a: { year: number; id: number }, b: { year: number; id: number }) => b.year - a.year).map((year: { year: number; id: number }) => (
+              <SelectItem key={year.id} value={year.year.toString()}>
+                {year.year}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {editForm.formState.errors.region && (
-          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.region.message}</p>
+        {form.formState.errors.census_year && (
+          <p className="text-sm text-red-500 mt-1">{form.formState.errors.census_year.message}</p>
         )}
       </div>
-      <div>
-        <Label htmlFor="edit-province">Province</Label>
-        <Input
-          id="edit-province"
-          className={editForm.formState.errors.province ? 'border-red-500' : ''}
-          {...editForm.register('province')}
+      <div className="flex items-center space-x-2">
+        <Checkbox
+          id={`${mode}-is-active`}
+          checked={form.watch('is_active')}
+          onCheckedChange={(checked) => form.setValue('is_active', checked as boolean)}
         />
-        {editForm.formState.errors.province && (
-          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.province.message}</p>
-        )}
-      </div>
-      <div>
-        <Label htmlFor="edit-census-year">Census Year</Label>
-        <YearPicker
-          value={editForm.watch('census_year')}
-          onChange={(year) => editForm.setValue('census_year', year)}
-          placeholder="Select census year"
-        />
-        {editForm.formState.errors.census_year && (
-          <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.census_year.message}</p>
-        )}
+        <Label htmlFor={`${mode}-is-active`}>Active</Label>
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" disabled={loading}>
-          {loading ? 'Saving...' : 'Save Changes'}
+          {loading ? (mode === 'edit' ? 'Saving...' : 'Adding...') : (mode === 'edit' ? 'Save Changes' : 'Add Community')}
         </Button>
       </DialogFooter>
     </form>
@@ -227,9 +262,10 @@ export default function CommunitiesManagement() {
   const [sortBy, setSortBy] = useState('created_at')
 
   // Dialog state
-  const [editingCommunity, setEditingCommunity] = useState<CommunityCensus | null>(null)
-  const [editingCommunityId, setEditingCommunityId] = useState<string | number| null>(null)
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<'edit' | 'create' | null>(null)
+  const [selectedCommunity, setSelectedCommunity] = useState<CommunityCensus | null>(null)
+
+  // Delete dialog state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [communityToDelete, setCommunityToDelete] = useState<CommunityCensus | null>(null)
 
@@ -237,18 +273,20 @@ export default function CommunitiesManagement() {
   // const [editForm, setEditForm] = useState({...})
   // const [newCommunityForm, setNewCommunityForm] = useState({...})
 
-  // React Hook Form setup
-  const createForm = useForm({
-    resolver: yupResolver(communitySchema),
-    defaultValues: {
-      name: '',
-      population: 0,
-      tier: 'Single' as 'Single' | 'Lower' | 'Upper',
-      province: 'Ontario',
-      region: '',
-      census_year: new Date().getFullYear(),
-    },
-  })
+  // React Hook Form setup (deprecated, now in CommunityForm)
+  // const createForm = useForm({
+  //   resolver: yupResolver(communitySchema),
+  //   defaultValues: {
+  //     name: '',
+  //     population: 0,
+  //     tier: '1' as string,
+  //     province: 'BC',
+  //     region: '',
+  //     zone: '',
+  //     census_year: new Date().getFullYear(),
+  //     is_active: true,
+  //   },
+  // })
 
   // UI state
   const [successMessage, setSuccessMessage] = useState('')
@@ -284,11 +322,13 @@ export default function CommunitiesManagement() {
   // Fetch census years
   const { data: censusYearsData, isLoading: isCensusYearsLoading } = useCensusYears()
 
-  // Fetch single community for editing
-  const { data: editingCommunityData, isLoading: editingCommunityLoading, error: editingCommunityError } = useCommunity(editingCommunityId || '', !!editingCommunityId)
+  // Fetch regions
+
+  // Fetch single community for editing (deprecated)
+  // const { data: editingCommunityData, isLoading: editingCommunityLoading, error: editingCommunityError } = useCommunity(editingCommunityId || '', !!editingCommunityId)
 
   // Mutations
-  const createMutation = useCreateCommunity()
+  const createMutation = useCreateCommunityCensus()
   const updateMutation = useUpdateCommunity()
   const deleteMutation = useDeleteCommunity()
 
@@ -338,12 +378,17 @@ export default function CommunitiesManagement() {
   }
 
   const handleEditCommunity = (community: CommunityCensus) => {
-    setEditingCommunityId(community.id)
-    setEditingCommunity(community) // Keep for fallback if API fails
+    setSelectedCommunity(community)
+    setDialogMode('edit')
+  }
+
+  const handleAddCommunity = () => {
+    setSelectedCommunity(null)
+    setDialogMode('create')
   }
 
   const onSubmitEdit = async (data: any) => {
-    if (!editingCommunity) return
+    if (!selectedCommunity) return
 
     try {
       // Transform data to match API format
@@ -357,21 +402,45 @@ export default function CommunitiesManagement() {
       }
 
       await updateMutation.mutateAsync({
-        id: editingCommunity.community,
+        id: selectedCommunity.community,
         data: apiData,
       })
 
-      setEditingCommunityId(null)
-      setEditingCommunity(null)
+      setDialogMode(null)
+      setSelectedCommunity(null)
       setSuccessMessage(`Community "${data.name}" updated successfully`)
     } catch (error: any) {
       setErrorMessage(error.message || 'Failed to update community')
     }
   }
 
-  // This will be called by the EditCommunityForm component
-  const handleSaveEdit = (data: any) => {
-    onSubmitEdit(data)
+  const onSubmitCreate = async (data: any) => {
+    try {
+      // Transform data to match API format
+      const apiData = {
+        community: data.name,
+        population: data.population,
+        tier: data.tier,
+        region: data.region,
+        zone: data.zone,
+        province: data.province,
+        census_year: data.census_year,
+        is_active: data.is_active,
+      }
+
+      await createMutation.mutateAsync(apiData)
+
+      setDialogMode(null)
+      setSelectedCommunity(null)
+      setSuccessMessage(`Community "${data.name}" added successfully`)
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Failed to add community')
+    }
+  }
+
+  const handleCloseDialog = () => {
+    setDialogMode(null)
+    setSelectedCommunity(null)
   }
 
   const handleDeleteCommunity = (community: CommunityCensus) => {
@@ -392,35 +461,11 @@ export default function CommunitiesManagement() {
     }
   }
 
-  const onSubmitCreate = async (data: any) => {
-    try {
-      // Transform data to match API format
-      const apiData = {
-        name: data.name,
-        population: data.population,
-        tier: data.tier,
-        region: data.region,
-        province: data.province,
-        census_year: data.census_year,
-      }
-
-      await createMutation.mutateAsync(apiData)
-
-      setIsAddDialogOpen(false)
-      createForm.reset()
-      setSuccessMessage(`Community "${data.name}" added successfully`)
-    } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to add community')
-    }
-  }
-
-  const handleAddCommunity = createForm.handleSubmit(onSubmitCreate)
-
   const getTierBadgeColor = (tier?: string) => {
     switch (tier) {
-      case 'Upper':
+      case '1':
         return 'bg-blue-100 text-blue-800'
-      case 'Lower':
+      case '2':
         return 'bg-green-100 text-green-800'
       case 'Single':
         return 'bg-purple-100 text-purple-800'
@@ -455,7 +500,7 @@ export default function CommunitiesManagement() {
                 Manage census subdivisions and community data
               </CardDescription>
             </div>
-            <Button onClick={() => setIsAddDialogOpen(true)}>
+            <Button onClick={handleAddCommunity}>
               <Plus className="h-4 w-4 mr-2" />
               Add Community
             </Button>
@@ -698,135 +743,25 @@ export default function CommunitiesManagement() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!editingCommunityId} onOpenChange={(open) => {
+      <Dialog open={dialogMode !== null} onOpenChange={(open) => {
         if (!open) {
-          setEditingCommunityId(null)
-          setEditingCommunity(null)
+          handleCloseDialog()
         }
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Community</DialogTitle>
-            <DialogDescription>Update community information</DialogDescription>
+            <DialogTitle>{dialogMode === 'edit' ? 'Edit Community' : 'Add New Community'}</DialogTitle>
+            <DialogDescription>{dialogMode === 'edit' ? 'Update community information' : 'Create a new community entry'}</DialogDescription>
           </DialogHeader>
 
-          {editingCommunityLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                <p>Loading community data...</p>
-              </div>
-            </div>
-          ) : editingCommunityError ? (
-            <div className="text-center py-8">
-              <p className="text-red-500 mb-4">Failed to load community data</p>
-              <Button onClick={() => setEditingCommunityId(editingCommunityId)} variant="outline">
-                Try Again
-              </Button>
-            </div>
-          ) : editingCommunityData ? (
-            <EditCommunityForm
-              community={editingCommunityData}
-              regions={[]}
-              onSubmit={handleSaveEdit}
-              loading={updateMutation.isPending}
-              onCancel={() => {
-                setEditingCommunityId(null)
-                setEditingCommunity(null)
-              }}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Community</DialogTitle>
-            <DialogDescription>Create a new community entry</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleAddCommunity} className="space-y-4">
-            <div>
-              <Label htmlFor="create-name">Name *</Label>
-              <Input
-                id="create-name"
-                {...createForm.register('name')}
-                className={createForm.formState.errors.name ? 'border-red-500' : ''}
-              />
-              {createForm.formState.errors.name && (
-                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.name.message}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="create-population">Population</Label>
-              <Input
-                id="create-population"
-                type="number"
-                {...createForm.register('population')}
-                className={createForm.formState.errors.population ? 'border-red-500' : ''}
-              />
-              {createForm.formState.errors.population && (
-                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.population.message}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="create-tier">Tier</Label>
-              <Select
-                value={createForm.watch('tier')}
-                onValueChange={(value) => createForm.setValue('tier', value as 'Single' | 'Lower' | 'Upper')}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Upper">Upper Tier</SelectItem>
-                  <SelectItem value="Lower">Lower Tier</SelectItem>
-                  <SelectItem value="Single">Single Tier</SelectItem>
-                </SelectContent>
-              </Select>
-              {createForm.formState.errors.tier && (
-                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.tier.message}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="create-region">Region</Label>
-              <Input placeholder='region' />
-              {createForm.formState.errors.region && (
-                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.region.message}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="create-province">Province</Label>
-              <Input
-                id="create-province"
-                {...createForm.register('province')}
-                className={createForm.formState.errors.province ? 'border-red-500' : ''}
-              />
-              {createForm.formState.errors.province && (
-                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.province.message}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="create-census-year">Census Year</Label>
-              <YearPicker
-                value={createForm.watch('census_year')}
-                onChange={(year) => createForm.setValue('census_year', year)}
-                placeholder="Select census year"
-              />
-              {createForm.formState.errors.census_year && (
-                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.census_year.message}</p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? 'Adding...' : 'Add Community'}
-              </Button>
-            </DialogFooter>
-          </form>
+          <CommunityForm
+            mode={dialogMode!}
+            community={selectedCommunity ?? undefined}
+            censusYearsData={censusYearsData}
+            onSubmit={dialogMode === 'edit' ? onSubmitEdit : onSubmitCreate}
+            loading={dialogMode === 'edit' ? updateMutation.isPending : createMutation.isPending}
+            onCancel={handleCloseDialog}
+          />
         </DialogContent>
       </Dialog>
 

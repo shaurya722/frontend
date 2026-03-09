@@ -9,6 +9,7 @@ import type {
   ApiResponse,
   CreateCommunityDto,
   UpdateCommunityDto,
+  CreateCommunityCensusDto,
 } from './types'
 
 /**
@@ -90,6 +91,14 @@ export async function fetchCommunityById(id: string): Promise<CommunityCensus> {
  */
 export async function createCommunity(data: CreateCommunityDto) {
   const response = await axiosInstance.post<ApiResponse<Community>>('/communities/', data)
+  return response.data
+}
+
+/**
+ * Create new community census data
+ */
+export async function createCommunityCensus(data: CreateCommunityCensusDto) {
+  const response = await axiosInstance.post<CommunityCensus>('/api/community/community-census-data/', data)
   return response.data
 }
 

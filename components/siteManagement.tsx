@@ -84,6 +84,8 @@ import { useSites } from '@/features/sites/hooks'
 import { SitesFilters } from '@/features/sites/types'
 import { useCensusYears } from '@/features/communities/hooks'
 
+import SiteFormDialog, { type CollectionSite } from './site-form-dialog'
+
 export default function SiteManagement() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -92,6 +94,11 @@ export default function SiteManagement() {
   const [year, setYear] = useState<number | undefined>(undefined)
   const [page, setPage] = useState(1)
   const limit = 10
+
+  // Dialog state
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<'add' | 'edit'>('add')
+  const [selectedSite, setSelectedSite] = useState<CollectionSite | null>(null)
 
   const { data: censusYears } = useCensusYears()
 
@@ -122,6 +129,77 @@ export default function SiteManagement() {
   const inactiveSites = totalSites - activeSites
   const scheduledSites = data?.results.filter(site => site.site_start_date && new Date(site.site_start_date) > new Date()).length || 0
   const totalPages = Math.ceil(totalSites / limit)
+
+  // Dialog handlers
+  const handleAddSite = () => {
+    setDialogMode('add')
+    setSelectedSite(null)
+    setIsDialogOpen(true)
+  }
+
+  const handleEditSite = (site: any) => {
+    // Transform site data to match CollectionSite interface
+    const collectionSite: CollectionSite = {
+      id: site.id,
+      name: site.site_name,
+      service_partner: site.service_partner || '',
+      site_type: site.site_type,
+      operator_type: site.operator_type,
+      address: site.address || '',
+      municipality_id: site.community_id || '',
+      status: site.is_active ? 'Active' : 'Inactive',
+      address_line1: site.address_line1 || '',
+      address_line2: site.address_line2 || '',
+      city: site.address_city || '',
+      state_province: site.address_province || '',
+      postal_code: site.address_postal_code || '',
+      community: site.community_name || '',
+      region_district: site.region || '',
+      service_area: site.service_area,
+      latitude: site.latitude,
+      longitude: site.longitude,
+      active_dates: site.site_start_date || '',
+      programs: [], // Map from site data
+      materials_collected: [], // Map from site data
+      collection_scope: [], // Map from site data
+    }
+
+    // Map programs
+    if (site.program_paint) collectionSite.programs.push('Paint')
+    if (site.program_lights) collectionSite.programs.push('Lights')
+    if (site.program_solvents) collectionSite.programs.push('Solvents')
+    if (site.program_pesticides) collectionSite.programs.push('Pesticides')
+    if (site.program_fertilizers) collectionSite.programs.push('Fertilizers')
+
+    setDialogMode('edit')
+    setSelectedSite(collectionSite)
+    setIsDialogOpen(true)
+  }
+
+  const handleSiteSubmit = async (siteData: CollectionSite) => {
+    try {
+      if (dialogMode === 'add') {
+        // TODO: Implement create site mutation
+        console.log('Creating site:', siteData)
+        // await createSiteMutation.mutateAsync(siteData)
+      } else {
+        // TODO: Implement update site mutation
+        console.log('Updating site:', siteData)
+        // await updateSiteMutation.mutateAsync(siteData)
+      }
+      setIsDialogOpen(false)
+      setSelectedSite(null)
+      // TODO: Show success message and refetch data
+    } catch (error) {
+      console.error('Error saving site:', error)
+      // TODO: Show error message
+    }
+  }
+
+  const handleDialogClose = () => {
+    setIsDialogOpen(false)
+    setSelectedSite(null)
+  }
 
   return (
     <div className='space-y-6'>
@@ -306,7 +384,7 @@ export default function SiteManagement() {
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button size='sm'>
+              <Button size='sm' onClick={handleAddSite}>
                 <Plus className='w-4 h-4 mr-2' />
                 Add Site
               </Button>
@@ -381,7 +459,7 @@ export default function SiteManagement() {
                           </TableCell>
                           <TableCell>
                             <div className='flex items-center gap-2'>
-                              <Button variant='ghost' size='sm'>
+                              <Button variant='ghost' size='sm' onClick={() => handleEditSite(site)}>
                                 <Edit className='w-4 h-4' />
                               </Button>
                               <Button variant='ghost' size='sm'>
@@ -440,6 +518,15 @@ export default function SiteManagement() {
           )}
         </CardContent>
       </Card>
+
+      <SiteFormDialog
+        isOpen={isDialogOpen}
+        onClose={handleDialogClose}
+        mode={dialogMode}
+        site={selectedSite}
+        onSubmit={handleSiteSubmit}
+        isLoading={false} // TODO: Connect to actual loading state
+      />
     </div>
   )
 }
