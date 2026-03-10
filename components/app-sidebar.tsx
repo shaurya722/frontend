@@ -179,7 +179,7 @@ export function AppSidebar() {
         {
           title: "Event Application",
           icon: Calendar,
-          href: "/dashboard/tool-b-events",
+          href: "/dashboard/events",
           visible: isAnalyst,
         },
         {

@@ -53,7 +53,7 @@ export default function ComplianceAnalysis() {
   const [selectedYear, setSelectedYear] = useState<string>('all')
   const [page, setPage] = useState(1)
   const [limit] = useState(10)
-  const [ordering, setOrdering] = useState('-compliance_rate')
+  const [ordering, setOrdering] = useState('community__name')
 
   // Debounce search input
   useEffect(() => {

@@ -42,6 +42,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { useCensusYears } from '@/hooks/useCensusYears'
+import { useMapData } from '@/hooks/useMapData'
 
 // Lazy load the Leaflet map component
 const LeafletMap = lazy(() => import('./leaflet-map'))
@@ -141,6 +143,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
   const [availableYears, setAvailableYears] = useState<number[]>([])
+
+  const { data: censusYearsData } = useCensusYears()
+
+  const { data: mapData, isLoading: isMapDataLoading, error: mapDataError } = useMapData(mapFilters.performancePeriod)
 
   // Static fallback data
   const FALLBACK_SITES: CollectionSite[] = [
@@ -251,63 +257,24 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
   // Fetch available years for the filter dropdown
   useEffect(() => {
-    const fetchAvailableYears = async () => {
-      try {
-        const response = await fetch('http://localhost:8000/api/community/years/')
-        if (response.ok) {
-          const data = await response.json()
-          const years = data.years?.map((item: any) => item.year) || []
-          setAvailableYears(years.sort((a: number, b: number) => b - a))
-        }
-      } catch (error) {
-        console.warn('Could not fetch available years, using defaults')
-        setAvailableYears([2021, 2022, 2023, 2024, 2025])
-      }
+    if (censusYearsData) {
+      const years = censusYearsData.years?.map((item) => item.year) || []
+      setAvailableYears(years.sort((a: number, b: number) => b - a))
+    } else {
+      setAvailableYears([2021, 2022, 2023, 2024, 2025])
     }
-
-    fetchAvailableYears()
-  }, [])
+  }, [censusYearsData])
 
   // Fetch data from Django API
   useEffect(() => {
-    const fetchMapData = async () => {
-      try {
-        setIsLoadingData(true)
-        setDataError(null)
-
-        // Build API URL with census year parameter
-        const apiUrl = new URL('http://localhost:8000/api/community/map-data/')
-        if (mapFilters.performancePeriod !== 'all') {
-          apiUrl.searchParams.set('census_year', mapFilters.performancePeriod)
-        }
-
-        const response = await fetch(apiUrl.toString())
-
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status}`)
-        }
-
-        const data = await response.json()
-
-        // Validate response structure
-        if (data && typeof data === 'object') {
-          setApiData(data)
-        } else {
-          throw new Error('Invalid API response format')
-        }
-      } catch (error) {
-        console.error('Error fetching map data:', error)
-        setDataError(error instanceof Error ? error.message : 'Failed to load map data')
-
-        // Keep fallback data
-        setApiData(null)
-      } finally {
-        setIsLoadingData(false)
-      }
+    if (mapData) {
+      setApiData(mapData)
+    } else if (mapDataError) {
+      setDataError(mapDataError.message)
+      setApiData(null)
     }
-
-    fetchMapData()
-  }, [mapFilters.performancePeriod]) // Refetch when performance period changes
+    setIsLoadingData(isMapDataLoading)
+  }, [mapData, mapDataError, isMapDataLoading])
 
   // Trigger loading state on mount
   useEffect(() => {

@@ -731,41 +731,7 @@ export default function CommunitiesManagement() {
                   Previous
                 </Button>
 
-                {/* Page Numbers */}
-                <div className="flex items-center gap-1">
-                  {(() => {
-                    const totalPages = Math.ceil(communitiesData.count / pageSize) || 1
-                    const currentPage = page
-                    const maxVisiblePages = 5
-                    const halfVisible = Math.floor(maxVisiblePages / 2)
-
-                    let startPage = Math.max(1, currentPage - halfVisible)
-                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
-
-                    // Adjust start page if we're near the end
-                    if (endPage - startPage + 1 < maxVisiblePages) {
-                      startPage = Math.max(1, endPage - maxVisiblePages + 1)
-                    }
-
-                    const pages = []
-                    for (let i = startPage; i <= endPage; i++) {
-                      pages.push(
-                        <Button
-                          key={i}
-                          variant={i === currentPage ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setPage(i)}
-                          disabled={isLoading}
-                          className="w-8 h-8 p-0"
-                        >
-                          {i}
-                        </Button>
-                      )
-                    }
-
-                    return pages
-                  })()}
-                </div>
+                <span>Page {page}</span>
 
                 <Button
                   variant="outline"
