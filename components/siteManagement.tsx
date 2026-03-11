@@ -80,7 +80,7 @@ import {
   Building2,
 } from 'lucide-react'
 
-import { useSites, useSite, useDeleteSite } from '@/features/sites/hooks'
+import { useSites, useSite, useCreateSite, useUpdateSite, useDeleteSite } from '@/features/sites/hooks'
 import { SitesFilters } from '@/features/sites/types'
 import { useCensusYears } from '@/features/communities/hooks'
 
@@ -91,6 +91,7 @@ export default function SiteManagement() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<string>('')
   const [siteType, setSiteType] = useState<string>('')
+  const [operatorType, setOperatorType] = useState<string>('')
   const [year, setYear] = useState<number | undefined>(undefined)
   const [page, setPage] = useState(1)
   const limit = 10
@@ -126,10 +127,11 @@ export default function SiteManagement() {
     search: debouncedSearch || undefined,
     status: status || undefined,
     site_type: siteType || undefined,
+    operator_type: operatorType || undefined,
     year,
     page,
     limit,
-  }), [debouncedSearch, status, siteType, year, page])
+  }), [debouncedSearch, status, siteType, operatorType, year, page])
 
   const { data, isLoading, error } = useSites(filters)
 
@@ -137,6 +139,8 @@ export default function SiteManagement() {
 
   // Mutations
   const deleteMutation = useDeleteSite()
+  const createSiteMutation = useCreateSite()
+  const updateSiteMutation = useUpdateSite()
 
   const totalSites = data?.count || 0
   const activeSites = data?.results.filter(site => site.is_active).length || 0
@@ -154,6 +158,7 @@ export default function SiteManagement() {
         operator_type: siteData.operator_type,
         address: [siteData.address_line_1, siteData.address_line_2].filter(Boolean).join(', ') || '',
         municipality_id: siteData.community || '',
+        census_year: siteData.census_year,
         status: siteData.is_active ? 'Active' : 'Inactive',
         address_line1: siteData.address_line_1 || '',
         address_line2: siteData.address_line_2 || '',
@@ -210,22 +215,101 @@ export default function SiteManagement() {
   }
 
   const handleSiteSubmit = async (siteData: CollectionSite) => {
+    console.log('handleSiteSubmit called with:', siteData)
     try {
       if (dialogMode === 'add') {
-        // TODO: Implement create site mutation
-        console.log('Creating site:', siteData)
-        // await createSiteMutation.mutateAsync(siteData)
+        // Transform the data to match API expectations
+        const apiData = {
+          site_name: siteData.name,
+          census_year: siteData.census_year,
+          community: siteData.municipality_id,
+          site_type: siteData.site_type,
+          operator_type: siteData.operator_type,
+          service_partner: siteData.service_partner || '',
+          address_line_1: siteData.address_line1 || '',
+          address_line_2: siteData.address_line2 || '',
+          address_city: siteData.city || '',
+          address_postal_code: siteData.postal_code || '',
+          region: siteData.state_province || '',
+          service_area: siteData.service_area?.toString() || '',
+          address_latitude: siteData.latitude || 0,
+          address_longitude: siteData.longitude || 0,
+          latitude: siteData.latitude || 0,
+          longitude: siteData.longitude || 0,
+          is_active: siteData.status === 'Active',
+          site_start_date: siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_paint: siteData.programs.includes('Paint'),
+          program_paint_start_date: siteData.programs.includes('Paint') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_paint_end_date: siteData.programs.includes('Paint') ? null : null,
+          program_lights: siteData.programs.includes('Lights'),
+          program_lights_start_date: siteData.programs.includes('Lights') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_lights_end_date: siteData.programs.includes('Lights') ? null : null,
+          program_solvents: siteData.programs.includes('Solvents'),
+          program_solvents_start_date: siteData.programs.includes('Solvents') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_solvents_end_date: siteData.programs.includes('Solvents') ? null : null,
+          program_pesticides: siteData.programs.includes('Pesticides'),
+          program_pesticides_start_date: siteData.programs.includes('Pesticides') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_pesticides_end_date: siteData.programs.includes('Pesticides') ? null : null,
+          program_fertilizers: siteData.programs.includes('Fertilizers'),
+          program_fertilizers_start_date: siteData.programs.includes('Fertilizers') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_fertilizers_end_date: siteData.programs.includes('Fertilizers') ? null : null,
+        }
+
+        console.log('Transformed API data:', apiData)
+        console.log('Calling createSiteMutation.mutateAsync')
+        const result = await createSiteMutation.mutateAsync(apiData)
+        console.log('Site created successfully:', result)
+        setSuccessMessage('Site created successfully')
       } else {
-        // TODO: Implement update site mutation
+        // Update site
         console.log('Updating site:', siteData)
-        // await updateSiteMutation.mutateAsync(siteData)
+        const apiData = {
+          site_name: siteData.name,
+          census_year: siteData.census_year,
+          community: siteData.municipality_id,
+          site_type: siteData.site_type,
+          operator_type: siteData.operator_type,
+          service_partner: siteData.service_partner || '',
+          address_line_1: siteData.address_line1 || '',
+          address_line_2: siteData.address_line2 || '',
+          address_city: siteData.city || '',
+          address_postal_code: siteData.postal_code || '',
+          region: siteData.state_province || '',
+          service_area: siteData.service_area?.toString() || '',
+          address_latitude: siteData.latitude || 0,
+          address_longitude: siteData.longitude || 0,
+          latitude: siteData.latitude || 0,
+          longitude: siteData.longitude || 0,
+          is_active: siteData.status === 'Active',
+          site_start_date: siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_paint: siteData.programs.includes('Paint'),
+          program_paint_start_date: siteData.programs.includes('Paint') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_paint_end_date: siteData.programs.includes('Paint') ? null : null,
+          program_lights: siteData.programs.includes('Lights'),
+          program_lights_start_date: siteData.programs.includes('Lights') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_lights_end_date: siteData.programs.includes('Lights') ? null : null,
+          program_solvents: siteData.programs.includes('Solvents'),
+          program_solvents_start_date: siteData.programs.includes('Solvents') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_solvents_end_date: siteData.programs.includes('Solvents') ? null : null,
+          program_pesticides: siteData.programs.includes('Pesticides'),
+          program_pesticides_start_date: siteData.programs.includes('Pesticides') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_pesticides_end_date: siteData.programs.includes('Pesticides') ? null : null,
+          program_fertilizers: siteData.programs.includes('Fertilizers'),
+          program_fertilizers_start_date: siteData.programs.includes('Fertilizers') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
+          program_fertilizers_end_date: siteData.programs.includes('Fertilizers') ? null : null,
+        }
+
+        console.log('Transformed update API data:', apiData)
+        console.log('Calling updateSiteMutation.mutateAsync with site ID:', editingSiteId)
+        const result = await updateSiteMutation.mutateAsync({ id: editingSiteId?.toString() || '', data: apiData })
+        console.log('Site updated successfully:', result)
+        setSuccessMessage('Site updated successfully')
       }
       setIsDialogOpen(false)
       setSelectedSite(null)
-      // TODO: Show success message and refetch data
     } catch (error) {
       console.error('Error saving site:', error)
-      // TODO: Show error message
+      setErrorMessage('Failed to save site')
     }
   }
 
@@ -325,8 +409,32 @@ export default function SiteManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Collection Site'>Collection Site</SelectItem>
-                    <SelectItem value='Other'>Other</SelectItem>
+                    <SelectItem value='Collection site'>Collection site</SelectItem>
+                    <SelectItem value='Event'>Event</SelectItem>
+                    <SelectItem value='municipal depot'>municipal depot</SelectItem>
+                    <SelectItem value='Seasonal Depot'>Seasonal Depot</SelectItem>
+                    <SelectItem value='Return to Retail'>Return to Retail</SelectItem>
+                    <SelectItem value='Private Depot'>Private Depot</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor='operatorType'>Operator Type</Label>
+                <Select value={operatorType || 'all'} onValueChange={(value) => setOperatorType(value === 'all' ? '' : value)}>
+                  <SelectTrigger className='w-40'>
+                    <SelectValue placeholder='All' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All</SelectItem>
+                    <SelectItem value='Retailer'>Retailer</SelectItem>
+                    <SelectItem value='Distributor'>Distributor</SelectItem>
+                    <SelectItem value='Municipal'>Municipal</SelectItem>
+                    <SelectItem value='First Nation/Indigenous'>First Nation/Indigenous</SelectItem>
+                    <SelectItem value='Private Depot'>Private Depot</SelectItem>
+                    <SelectItem value='Product care'>Product care</SelectItem>
+                    <SelectItem value='Regional District'>Regional District</SelectItem>
+                    <SelectItem value='Regional Service commission'>Regional Service commission</SelectItem>
+                    <SelectItem value='others'>others</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

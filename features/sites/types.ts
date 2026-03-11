@@ -52,6 +52,7 @@ export interface SitesFilters {
   search?: string;
   status?: string;
   site_type?: string;
+  operator_type?: string;
   residential?: boolean;
   sort?: string;
   year?: number;

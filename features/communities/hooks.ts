@@ -11,8 +11,9 @@ import {
   bulkImportCommunities,
   exportCommunities,
   fetchCensusYears,
+  fetchCommunityDropdown,
 } from './api'
-import type { CommunitiesQueryParams, CreateCommunityDto, UpdateCommunityDto, CreateCommunityCensusDto } from './types'
+import type { CommunitiesQueryParams, CreateCommunityDto, UpdateCommunityDto, CreateCommunityCensusDto, CommunityDropdownResponse } from './types'
 
 export const COMMUNITIES_QUERY_KEY = 'communities'
 
@@ -134,5 +135,17 @@ export function useCensusYears() {
     queryKey: ['census-years'],
     queryFn: () => fetchCensusYears(),
     staleTime: 300000, // 5 minutes - census years don't change often
+  })
+}
+
+/**
+ * Hook to fetch communities for dropdown
+ */
+export function useCommunityDropdown(year?: number) {
+  return useQuery({
+    queryKey: ['community-dropdown', year],
+    queryFn: () => fetchCommunityDropdown(year),
+    enabled: !!year,
+    staleTime: 60000, // 1 minute
   })
 }

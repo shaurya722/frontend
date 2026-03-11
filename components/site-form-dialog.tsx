@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useCensusYears, useCommunityDropdown } from '@/features/communities/hooks'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ export interface CollectionSite {
   operator_type: string
   address: string
   municipality_id?: string
+  census_year?: number
   status: 'Active' | 'Inactive' | 'Scheduled'
   // Location fields
   address_line1?: string
@@ -59,9 +61,9 @@ interface SiteFormDialogProps {
 }
 
 // Mock data - replace with actual data from your API
-const siteTypes = ['Collection Site', 'Depot', 'Transfer Station', 'Other']
-const operatorTypes = ['Municipal', 'Private', 'NGO', 'Community']
-const statuses = ['Active', 'Inactive', 'Scheduled']
+const siteTypes = ['Collection site', 'Event', 'municipal depot', 'Seasonal Depot', 'Return to Retail', 'Private Depot']
+const operatorTypes = ['Retailer', 'Distributor', 'Municipal', 'First Nation/Indigenous', 'Private Depot', 'Product care', 'Regional District', 'Regional Service commission', 'others']
+const statuses = ['Active', 'Inactive']
 const programs = ['Paint', 'Lights', 'Solvents', 'Pesticides', 'Fertilizers']
 const materialsServices = [
   'Paint',
@@ -103,6 +105,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
     operator_type: '',
     address: '',
     municipality_id: '',
+    census_year: undefined,
     status: 'Active',
     address_line1: '',
     address_line2: '',
@@ -120,6 +123,11 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
     collection_scope: [],
   })
 
+  const { data: censusYears } = useCensusYears()
+  const { data: communities, isLoading: communitiesLoading } = useCommunityDropdown(
+    censusYears?.years?.find(cy => cy.id === newSite.census_year)?.year
+  )
+
   // Initialize form data when dialog opens or site changes
   useEffect(() => {
     if (isOpen && site && mode === 'edit') {
@@ -132,6 +140,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
         operator_type: '',
         address: '',
         municipality_id: '',
+        census_year: undefined,
         status: 'Active',
         address_line1: '',
         address_line2: '',
@@ -301,23 +310,45 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
 
             <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
               <div className='space-y-2'>
+                <Label htmlFor='census_year'>Census Year</Label>
+                <Select
+                  value={newSite.census_year?.toString() || ''}
+                  onValueChange={(value) =>
+                    setNewSite({ ...newSite, census_year: value ? parseInt(value) : undefined })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder='Select census year' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {censusYears?.years?.map((censusYear) => (
+                      <SelectItem key={censusYear.id} value={censusYear.id.toString()}>
+                        {censusYear.year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className='space-y-2'>
                 <Label htmlFor='municipality'>Community *</Label>
                 <Select
                   value={newSite.municipality_id}
                   onValueChange={(value) =>
                     setNewSite({ ...newSite, municipality_id: value })
                   }
+                  disabled={!newSite.census_year || communitiesLoading}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder='Select community' />
+                    <SelectValue placeholder={newSite.census_year ? (communitiesLoading ? 'Loading communities...' : 'Select community') : 'Select census year first'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {safeMunicipalities.map((municipality) => (
+                    {communities?.communities?.map((community: any) => (
                       <SelectItem
-                        key={municipality.id}
-                        value={municipality.id}
+                        key={community.id}
+                        value={community.id}
                       >
-                        {municipality.name}
+                        {community.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

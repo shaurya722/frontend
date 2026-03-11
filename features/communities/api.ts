@@ -10,6 +10,7 @@ import type {
   CreateCommunityDto,
   UpdateCommunityDto,
   CreateCommunityCensusDto,
+  CommunityDropdownResponse,
 } from './types'
 
 /**
@@ -150,5 +151,21 @@ export async function exportCommunities(params: CommunitiesQueryParams = {}) {
  */
 export async function fetchCensusYears(): Promise<{ years: Array<{ id: number; year: number }>; total: number }> {
   const response = await axiosInstance.get<{ years: Array<{ id: number; year: number }>; total: number }>('/api/community/years/')
+  return response.data
+}
+
+/**
+ * Fetch communities for dropdown based on census year
+ */
+export async function fetchCommunityDropdown(year?: number): Promise<CommunityDropdownResponse> {
+  const queryParams = new URLSearchParams()
+  if (year) {
+    queryParams.append('year', year.toString())
+  }
+
+  const response = await axiosInstance.get<CommunityDropdownResponse>(
+    `/api/community/communities/dropdown/?${queryParams.toString()}`
+  )
+
   return response.data
 }

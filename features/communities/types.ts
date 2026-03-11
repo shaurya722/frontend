@@ -119,3 +119,13 @@ export interface UpdateCommunityDto {
   province?: string
   census_year?: number
 }
+
+export interface CommunityDropdownItem {
+  id: string
+  name: string
+}
+
+export interface CommunityDropdownResponse {
+  communities: CommunityDropdownItem[]
+  total: number
+}

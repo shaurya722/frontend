@@ -23,6 +23,16 @@ export const fetchSiteById = async (id: number): Promise<Site> => {
   return response.data;
 };
 
+export const createSite = async (siteData: any): Promise<any> => {
+  const response = await axiosInstance.post('/api/sites/', siteData);
+  return response.data;
+};
+
 export const deleteSiteById = async (id: number): Promise<void> => {
-  await axiosInstance.delete(`/api/sites/${id}`);
+  await axiosInstance.delete(`/api/sites/${id}/`);
+};
+
+export const updateSite = async (id: string, siteData: any): Promise<any> => {
+  const response = await axiosInstance.put(`/api/sites/${id}/`, siteData);
+  return response.data;
 };
