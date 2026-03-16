@@ -113,11 +113,16 @@ export interface CreateCommunityCensusDto {
 }
 
 export interface UpdateCommunityDto {
-  name?: string
+  community?: string
   population?: number
   tier?: string
+  region?: string
+  zone?: string
   province?: string
   census_year?: number
+  is_active?: boolean
+  start_date?: string | null
+  end_date?: string | null
 }
 
 export interface CommunityDropdownItem {

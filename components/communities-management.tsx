@@ -109,8 +109,14 @@ function CommunityForm({
       zone: community.zone || '',
       census_year: community.census_year_value || 2021,
       is_active: community.is_active,
-      start_date: community.start_date ? new Date(community.start_date) : null,
-      end_date: community.end_date ? new Date(community.end_date) : null,
+      start_date: community.start_date ? (() => {
+        const d = new Date(community.start_date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })() : null,
+      end_date: community.end_date ? (() => {
+        const d = new Date(community.end_date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })() : null,
     } : {
       name: '',
       population: 0,
@@ -156,19 +162,12 @@ function CommunityForm({
       </div>
       <div>
         <Label htmlFor={`${mode}-tier`}>Tier</Label>
-        <Select
-          value={form.watch('tier')}
-          onValueChange={(value) => form.setValue('tier', value)}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1">Tier 1</SelectItem>
-            <SelectItem value="2">Tier 2</SelectItem>
-            <SelectItem value="3">Tier 3</SelectItem>
-          </SelectContent>
-        </Select>
+        <Input
+          id={`${mode}-tier`}
+          type="number"
+          className={form.formState.errors.tier ? 'border-red-500' : ''}
+          {...form.register('tier')}
+        />
         {form.formState.errors.tier && (
           <p className="text-sm text-red-500 mt-1">{form.formState.errors.tier.message}</p>
         )}
@@ -424,16 +423,24 @@ export default function CommunitiesManagement() {
     if (!editingCommunityData) return
 
     try {
-      // Transform data to match API format
+      // Transform data to match API format (same as create)
       const apiData = {
-        name: data.name,
+        community: data.name,
         population: data.population,
         tier: data.tier,
         region: data.region,
+        zone: data.zone,
         province: data.province,
         census_year: data.census_year,
-        start_date: data.start_date,
-        end_date: data.end_date,
+        is_active: data.is_active,
+        start_date: data.start_date ? (() => {
+          const d = new Date(data.start_date);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })() : null,
+        end_date: data.end_date ? (() => {
+          const d = new Date(data.end_date);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })() : null,
       }
 
       await updateMutation.mutateAsync({
@@ -462,8 +469,14 @@ export default function CommunitiesManagement() {
         province: data.province,
         census_year: data.census_year,
         is_active: data.is_active,
-        start_date: data.start_date,
-        end_date: data.end_date,
+        start_date: data.start_date ? (() => {
+          const d = new Date(data.start_date);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })() : null,
+        end_date: data.end_date ? (() => {
+          const d = new Date(data.end_date);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })() : null,
       }
 
       await createMutation.mutateAsync(apiData)

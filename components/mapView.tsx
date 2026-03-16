@@ -847,10 +847,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <SelectTrigger className='h-9'>
                     <SelectValue placeholder='Year' />
                   </SelectTrigger>
-                  <SelectContent className='z-[100000]'>
-                    <SelectItem value={currentYear.toString()}>
-                      {currentYear} (Current)
-                    </SelectItem>
+                  <SelectContent className='z-100000'>
                     {availableYears.map((year) => (
                       <SelectItem key={year} value={year.toString()}>
                         {year}

@@ -67,17 +67,6 @@ export async function fetchCommunityRegulatoryRuleById(id: string): Promise<Comm
   return response.data
 }
 
-/**
- * Create new community regulatory rule
- */
-export async function createCommunityRegulatoryRule(data: Partial<CommunityRegulatoryRule>) {
-  const response = await axiosInstance.post<ApiResponse<CommunityRegulatoryRule>>('/regulatory-rules/', data)
-  return response.data
-}
-
-/**
- * Update existing community regulatory rule
- */
 export async function updateCommunityRegulatoryRule(id: string, data: Partial<CommunityRegulatoryRule>) {
   const response = await axiosInstance.patch<ApiResponse<CommunityRegulatoryRule>>(`/regulatory-rules/${id}/update/`, data)
   return response.data

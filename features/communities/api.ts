@@ -107,7 +107,7 @@ export async function createCommunityCensus(data: CreateCommunityCensusDto) {
  * Update existing community
  */
 export async function updateCommunity(id: string, data: UpdateCommunityDto) {
-  const response = await axiosInstance.put<ApiResponse<Community>>(`/communities/${id}/`, data)
+  const response = await axiosInstance.put<CommunityCensus>(`/api/community/communities/${id}/`, data)
   return response.data
 }
 
