@@ -38,9 +38,8 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Calendar, CheckCircle, AlertTriangle, Zap } from "lucide-react";
-import { useCensusYears } from "@/hooks/useCensusYears";
-import { useEventListing } from "@/hooks/useEventListing";
-import { useMutation } from "@tanstack/react-query";
+import { useCensusYears } from "@/features/communities/hooks";
+import { useApproveEvents, useEventListing } from "@/features/events/hooks";
 
 interface Event {
   id: number;
@@ -77,7 +76,6 @@ export default function ToolBEventApplication() {
   const [selectedYear, setSelectedYear] = useState<number>(
     new Date().getFullYear(),
   );
-  const [loading, setLoading] = useState(false);
 
   // Dialog state
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
@@ -103,27 +101,14 @@ export default function ToolBEventApplication() {
 
   const { data: censusYearsData } = useCensusYears();
 
-  const { data: eventData, isLoading } = useEventListing(
-    selectedYear,
-    debouncedSearch || undefined,
-    currentPage,
-    pageSize,
-  );
-
-  const approveMutation = useMutation({
-    mutationFn: async (data: { site_ids: number[]; is_event: boolean }) => {
-      const response = await fetch(
-        "http://127.0.0.1:8000/api/sites/approve-events/",
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        },
-      );
-      if (!response.ok) throw new Error("Failed to approve events");
-      return response.json();
-    },
+  const { data: eventData, isLoading } = useEventListing({
+    year: selectedYear,
+    search: debouncedSearch || undefined,
+    page: currentPage,
+    limit: pageSize,
   });
+
+  const approveEventsMutation = useApproveEvents();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -234,13 +219,13 @@ export default function ToolBEventApplication() {
       // Call API for unchecked events with false and selected with true
       await Promise.all([
         siteIdsUnchecked.length > 0
-          ? approveMutation.mutateAsync({
+          ? approveEventsMutation.mutateAsync({
               site_ids: siteIdsUnchecked,
               is_event: false,
             })
           : Promise.resolve(),
         siteIdsSelected.length > 0
-          ? approveMutation.mutateAsync({
+          ? approveEventsMutation.mutateAsync({
               site_ids: siteIdsSelected,
               is_event: true,
             })
@@ -397,7 +382,7 @@ export default function ToolBEventApplication() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {isLoading ? (
             <div className="text-center py-8">Loading...</div>
           ) : shortfallCommunities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -592,9 +577,9 @@ export default function ToolBEventApplication() {
             </Button>
             <Button
               onClick={handleApplyEvents}
-              disabled={approveMutation.isPending}
+              disabled={approveEventsMutation.isPending}
             >
-              {approveMutation.isPending
+              {approveEventsMutation.isPending
                 ? "Saving..."
                 : `Save ${selectedEvents.length} Event(s)`}
             </Button>

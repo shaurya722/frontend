@@ -61,8 +61,8 @@ interface SiteFormDialogProps {
 }
 
 // Mock data - replace with actual data from your API
-const siteTypes = ['Collection site', 'Event', 'municipal depot', 'Seasonal Depot', 'Return to Retail', 'Private Depot']
-const operatorTypes = ['Retailer', 'Distributor', 'Municipal', 'First Nation/Indigenous', 'Private Depot', 'Product care', 'Regional District', 'Regional Service commission', 'others']
+const siteTypes = ['Collection Site', 'Event', 'Municipal Depot', 'Seasonal Depot', 'Return to Retail', 'Private Depot']
+const operatorTypes = ['Retailer', 'Distributor', 'Municipal', 'First Nation/Indigenous', 'Private Depot', 'Product Care', 'Regional District', 'Regional Service commission', 'Others']
 const statuses = ['Active', 'Inactive']
 const programs = ['Paint', 'Lights', 'Solvents', 'Pesticides', 'Fertilizers']
 const materialsServices = [

@@ -409,9 +409,9 @@ export default function SiteManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Collection site'>Collection site</SelectItem>
+                    <SelectItem value='Collection Site'>Collection Site</SelectItem>
                     <SelectItem value='Event'>Event</SelectItem>
-                    <SelectItem value='municipal depot'>municipal depot</SelectItem>
+                    <SelectItem value='Municipal Depot'>Municipal Depot</SelectItem>
                     <SelectItem value='Seasonal Depot'>Seasonal Depot</SelectItem>
                     <SelectItem value='Return to Retail'>Return to Retail</SelectItem>
                     <SelectItem value='Private Depot'>Private Depot</SelectItem>
@@ -431,10 +431,10 @@ export default function SiteManagement() {
                     <SelectItem value='Municipal'>Municipal</SelectItem>
                     <SelectItem value='First Nation/Indigenous'>First Nation/Indigenous</SelectItem>
                     <SelectItem value='Private Depot'>Private Depot</SelectItem>
-                    <SelectItem value='Product care'>Product care</SelectItem>
+                    <SelectItem value='Product Care'>Product Care</SelectItem>
                     <SelectItem value='Regional District'>Regional District</SelectItem>
                     <SelectItem value='Regional Service commission'>Regional Service commission</SelectItem>
-                    <SelectItem value='others'>others</SelectItem>
+                    <SelectItem value='Others'>Others</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
