@@ -6,6 +6,7 @@ import type {
   RegulatoryRule,
   CreateRegulatoryRuleDto,
   UpdateRegulatoryRuleDto,
+  RegulatoryRulesResponse,
 } from './types'
 
 /**
@@ -13,7 +14,7 @@ import type {
  */
 export async function fetchRegulatoryRules(
   params: RegulatoryRulesQueryParams = {}
-): Promise<{ results: RegulatoryRule[] }> {
+): Promise<RegulatoryRulesResponse> {
   const { page = 1, limit = 10, search, sort, program, category, rule_type, is_active, year } = params
 
   // Build query string
@@ -49,7 +50,7 @@ export async function fetchRegulatoryRules(
     queryParams.append('is_active', is_active.toString())
   }
 
-  const response = await axiosInstance.get<{ results: RegulatoryRule[] }>(
+  const response = await axiosInstance.get<RegulatoryRulesResponse>(
     `/api/regulatory-rules/rules/?${queryParams.toString()}`
   )
 

@@ -126,7 +126,7 @@ export async function bulkImportCommunities(file: File) {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await axiosInstance.post<ApiResponse<any>>('/communities/bulk-import/', formData, {
+  const response = await axiosInstance.post('/api/community/community-census-data/import-export/', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -142,6 +142,20 @@ export async function exportCommunities(params: CommunitiesQueryParams = {}) {
   const response = await axiosInstance.post('/communities/export/', params, {
     responseType: 'blob',
   })
+
+  return response.data
+}
+
+/**
+ * Download community census template CSV
+ */
+export async function downloadCommunityCensusTemplate() {
+  const response = await axiosInstance.get<Blob>(
+    '/api/community/community-census-data/template/',
+    {
+      responseType: 'blob',
+    }
+  )
 
   return response.data
 }

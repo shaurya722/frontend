@@ -44,6 +44,7 @@ import { Switch } from '@/components/ui/switch'
 import { useCompliance } from '@/features/compliance/hooks'
 import { ComplianceFilters } from '@/features/compliance/types'
 import { useCensusYears } from '@/features/communities'
+import { PaginationControls } from '@/components/pagination-controls'
 
 export default function ComplianceAnalysis() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -408,69 +409,17 @@ export default function ComplianceAnalysis() {
                 </TableBody>
               </Table>
               <hr />
-              {/* Pagination */}
-            <div className='flex flex-col sm:flex-row items-start sm:items-center gap-4 mt-3'>
-              <div className='text-sm text-gray-600'>
-                Showing {results.length} of {data?.count || 0} results
-              </div>
-              <div className='flex items-center gap-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => handlePageChange(page - 1)}
-                  disabled={!hasPrev || isLoading}
-                >
-                  <ChevronLeft className='h-4 w-4' />
-                  Previous
-                </Button>
-
-                {/* Page Numbers */}
-                <div className='flex items-center gap-1'>
-                  {(() => {
-                    const totalPages = Math.ceil((data?.count || 0) / limit) || 1
-                    const currentPage = page
-                    const maxVisiblePages = 5
-                    const halfVisible = Math.floor(maxVisiblePages / 2)
-
-                    let startPage = Math.max(1, currentPage - halfVisible)
-                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
-
-                    // Adjust start page if we're near the end
-                    if (endPage - startPage + 1 < maxVisiblePages) {
-                      startPage = Math.max(1, endPage - maxVisiblePages + 1)
-                    }
-
-                    const pages = []
-                    for (let i = startPage; i <= endPage; i++) {
-                      pages.push(
-                        <Button
-                          key={i}
-                          variant={i === currentPage ? 'default' : 'outline'}
-                          size='sm'
-                          onClick={() => handlePageChange(i)}
-                          disabled={isLoading}
-                          className='w-8 h-8 p-0'
-                        >
-                          {i}
-                        </Button>
-                      )
-                    }
-
-                    return pages
-                  })()}
-                </div>
-
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => handlePageChange(page + 1)}
-                  disabled={!hasNext || isLoading}
-                >
-                  Next
-                  <ChevronRight className='h-4 w-4' />
-                </Button>
-              </div>
-            </div>
+              <PaginationControls
+                page={page}
+                pageSize={limit}
+                totalCount={data?.count || 0}
+                currentCount={results.length}
+                onPageChange={handlePageChange}
+                isLoading={isLoading}
+                hasNext={hasNext}
+                hasPrev={hasPrev}
+                label="results"
+              />
             </div>
           </div>
         </CardContent>

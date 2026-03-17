@@ -43,6 +43,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useToast } from '@/hooks/use-toast'
+import { PaginationControls } from '@/components/pagination-controls'
 import {
   Building2,
   Search,
@@ -55,9 +57,11 @@ import {
   CheckCircle,
   ChevronUp,
   ChevronDown,
+  UploadCloud,
+  Download,
 } from 'lucide-react'
 
-import { useCommunities, useCreateCommunity, useCreateCommunityCensus, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears } from '@/features/communities'
+import { useCommunities, useCreateCommunity, useCreateCommunityCensus, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears, useBulkImportCommunities, downloadCommunityCensusTemplate } from '@/features/communities'
 import type { Community, CommunityCensus } from '@/features/communities'
 import type { Region } from '@/features/regions'
 import { useRegions } from '@/features/regions'
@@ -164,7 +168,7 @@ function CommunityForm({
         <Label htmlFor={`${mode}-tier`}>Tier</Label>
         <Input
           id={`${mode}-tier`}
-          type="number"
+          type="text"
           className={form.formState.errors.tier ? 'border-red-500' : ''}
           {...form.register('tier')}
         />
@@ -296,6 +300,10 @@ export default function CommunitiesManagement() {
   const [dialogMode, setDialogMode] = useState<'edit' | 'create' | null>(null)
   const [selectedCommunity, setSelectedCommunity] = useState<CommunityCensus | null>(null)
   const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null)
+  const [templateDownloading, setTemplateDownloading] = useState(false)
+  const [isDragActive, setIsDragActive] = useState(false)
 
   // Delete dialog state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -323,6 +331,9 @@ export default function CommunitiesManagement() {
   // UI state
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [importErrorDetails, setImportErrorDetails] = useState<{ error?: string; expected_headers?: string[]; provided_headers?: string[] } | null>(null)
+  const [importUploadError, setImportUploadError] = useState<string | null>(null)
+  const { toast } = useToast()
   // const [regions, setRegions] = useState<Region[]>([])
 
   // Debounce search input
@@ -363,6 +374,7 @@ export default function CommunitiesManagement() {
   const createMutation = useCreateCommunityCensus()
   const updateMutation = useUpdateCommunity()
   const deleteMutation = useDeleteCommunity()
+  const bulkImportMutation = useBulkImportCommunities()
 
   // Extract data from response
   const communitiesData = useMemo(() => {
@@ -495,6 +507,126 @@ export default function CommunitiesManagement() {
     setEditingCommunityId(null)
   }
 
+  const handleOpenImportDialog = () => {
+    setSelectedImportFile(null)
+    setImportErrorDetails(null)
+    setImportUploadError(null)
+    setIsImportDialogOpen(true)
+  }
+
+  const handleCloseImportDialog = () => {
+    setIsImportDialogOpen(false)
+    setSelectedImportFile(null)
+    setImportUploadError(null)
+  }
+
+  const handleFileSelection = (file: File | null) => {
+    if (!file) {
+      setSelectedImportFile(null)
+      setImportUploadError(null)
+      return
+    }
+
+    const isCsv = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')
+    if (!isCsv) {
+      toast({
+        title: 'Unsupported file type',
+        description: 'Please upload a .csv file.',
+        variant: 'destructive',
+      })
+      setSelectedImportFile(null)
+      setImportUploadError('Invalid format. Only .csv files are supported for import.')
+      return
+    }
+
+    setSelectedImportFile(file)
+    setImportUploadError(null)
+  }
+
+  const handleImportFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null
+    handleFileSelection(file)
+  }
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!isDragActive) {
+      setIsDragActive(true)
+    }
+  }
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setIsDragActive(false)
+    }
+  }
+
+  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragActive(false)
+    const file = event.dataTransfer?.files?.[0]
+    if (file) {
+      handleFileSelection(file)
+    }
+  }
+
+  const handleTemplateDownload = async () => {
+    try {
+      setTemplateDownloading(true)
+      const blob = await downloadCommunityCensusTemplate()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'community-census-template.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({
+        title: 'Download failed',
+        description: error.message || 'Unable to retrieve sample CSV',
+        variant: 'destructive',
+      })
+    } finally {
+      setTemplateDownloading(false)
+    }
+  }
+
+  const handleImportSubmit = async () => {
+    if (!selectedImportFile) {
+      toast({
+        title: 'No file selected',
+        description: 'Please choose a CSV file to import.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    try {
+      await bulkImportMutation.mutateAsync(selectedImportFile)
+      toast({
+        title: 'Import complete',
+        description: 'Community data processed successfully.',
+      })
+      setImportErrorDetails(null)
+      handleCloseImportDialog()
+    } catch (error: any) {
+      const errorDetails = error?.data?.error || error.message || 'Failed to import community data'
+      toast({
+        title: 'Import failed',
+        description: typeof errorDetails === 'string' ? errorDetails : 'Check the CSV and try again.',
+        variant: 'destructive',
+      })
+      setImportErrorDetails(error?.data || { error: errorDetails })
+      handleCloseImportDialog()
+    }
+  }
+
   const handleDeleteCommunity = (community: CommunityCensus) => {
     setCommunityToDelete(community)
     setIsDeleteDialogOpen(true)
@@ -539,6 +671,25 @@ export default function CommunitiesManagement() {
           <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
         </Alert>
       )}
+      {importErrorDetails && (
+        <Alert variant="destructive" className="border-red-300 bg-red-50">
+          <div className="space-y-2">
+            <p className="font-semibold">{importErrorDetails.error || 'Import failed'}</p>
+            {importErrorDetails.expected_headers && (
+              <div>
+                <p className="text-sm font-medium">Expected headers:</p>
+                <p className="text-sm text-red-900">{importErrorDetails.expected_headers.join(', ')}</p>
+              </div>
+            )}
+            {importErrorDetails.provided_headers && (
+              <div>
+                <p className="text-sm font-medium">Provided headers:</p>
+                <pre className="whitespace-pre-wrap wrap-break-word rounded-md bg-white/70 p-2 text-xs text-red-900 max-h-40 overflow-auto">{importErrorDetails.provided_headers.join('\n')}</pre>
+              </div>
+            )}
+          </div>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
@@ -552,10 +703,16 @@ export default function CommunitiesManagement() {
                 Manage census subdivisions and community data
               </CardDescription>
             </div>
-            <Button onClick={handleAddCommunity}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Community
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={handleOpenImportDialog}>
+                <UploadCloud className="h-4 w-4 mr-2" />
+                Import
+              </Button>
+              <Button onClick={handleAddCommunity}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Community
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -710,54 +867,22 @@ export default function CommunitiesManagement() {
             </Table>
           </div>
 
-          {/* Pagination */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="text-sm text-gray-600">
-                Showing {communities.length} of {communitiesData.count} communities
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Show:</span>
-                <Select value={pageSize.toString()} onValueChange={(value) => setPageSize(parseInt(value))}>
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-gray-600">per page</span>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page - 1)}
-                  disabled={!communitiesData.previous || isLoading}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-
-                <span>Page {page}</span>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page + 1)}
-                  disabled={!communitiesData.next || isLoading}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            totalCount={communitiesData.count}
+            currentCount={communities.length}
+            onPageChange={(newPage) => setPage(newPage)}
+            isLoading={isLoading}
+            hasNext={!!communitiesData.next}
+            hasPrev={!!communitiesData.previous}
+            label="communities"
+            pageSizeOptions={[10, 20, 50, 100]}
+            onPageSizeChange={(value) => {
+              setPageSize(value)
+              setPage(1)
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -780,6 +905,69 @@ export default function CommunitiesManagement() {
             loading={dialogMode === 'edit' ? (updateMutation.isPending || editingCommunityLoading) : createMutation.isPending}
             onCancel={handleCloseDialog}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          handleCloseImportDialog()
+        } else {
+          setIsImportDialogOpen(true)
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import Community Census Data</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file that follows the template to bulk import or update community census entries.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-gray-600">Need a reference?</span>
+              <Button variant="secondary" onClick={handleTemplateDownload} disabled={templateDownloading}>
+                <Download className="h-4 w-4 mr-2" />
+                {templateDownloading ? 'Preparing download...' : 'Download sample CSV'}
+              </Button>
+            </div>
+            <div
+              className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200'}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleFileDrop}
+            >
+              <input
+                id="community-import-file"
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleImportFileChange}
+              />
+              <label htmlFor="community-import-file" className="flex flex-col items-center gap-2 cursor-pointer">
+                <UploadCloud className="h-6 w-6 text-gray-400" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Click to select or drag and drop</p>
+                  <p className="text-xs text-gray-500">CSV files only • Max 10MB</p>
+                </div>
+              </label>
+              {selectedImportFile && (
+                <p className="mt-3 text-sm text-gray-700">
+                  Selected file: <span className="font-medium">{selectedImportFile.name}</span>
+                </p>
+              )}
+              {importUploadError && (
+                <p className="mt-3 text-sm text-red-600">{importUploadError}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseImportDialog}>
+              Cancel
+            </Button>
+            <Button onClick={handleImportSubmit} disabled={bulkImportMutation.isPending || !selectedImportFile}>
+              {bulkImportMutation.isPending ? 'Importing...' : 'Import Data'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

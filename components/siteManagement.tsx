@@ -49,15 +49,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
-import {
   ChevronLeft,
   ChevronRight,
   Search,
@@ -85,6 +76,7 @@ import { SitesFilters } from '@/features/sites/types'
 import { useCensusYears } from '@/features/communities/hooks'
 
 import SiteFormDialog, { type CollectionSite } from './site-form-dialog'
+import { PaginationControls } from '@/components/pagination-controls'
 
 export default function SiteManagement() {
   const [search, setSearch] = useState('')
@@ -146,7 +138,8 @@ export default function SiteManagement() {
   const activeSites = data?.results.filter(site => site.is_active).length || 0
   const inactiveSites = totalSites - activeSites
   const scheduledSites = data?.results.filter(site => site.site_start_date && new Date(site.site_start_date) > new Date()).length || 0
-  const totalPages = Math.ceil(totalSites / limit)
+  const hasNext = Boolean(data?.next)
+  const hasPrev = Boolean(data?.previous)
 
   useEffect(() => {
     if (siteData && dialogMode === 'edit') {
@@ -655,37 +648,17 @@ export default function SiteManagement() {
                   </Table>
                 </div>
               </div>
-              {totalPages > 1 && (
-                <div className='flex justify-center mt-4'>
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setPage(Math.max(1, page - 1))}
-                          className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <PaginationItem key={p}>
-                          <PaginationLink
-                            onClick={() => setPage(p)}
-                            isActive={p === page}
-                            className='cursor-pointer'
-                          >
-                            {p}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setPage(Math.min(totalPages, page + 1))}
-                          className={page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+              <PaginationControls
+                page={page}
+                pageSize={limit}
+                totalCount={totalSites}
+                currentCount={data?.results.length || 0}
+                onPageChange={(newPage) => setPage(newPage)}
+                isLoading={isLoading}
+                hasNext={hasNext}
+                hasPrev={hasPrev}
+                label="sites"
+              />
             </>
           )}
         </CardContent>

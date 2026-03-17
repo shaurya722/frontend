@@ -45,6 +45,7 @@ import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRigh
 import type { RegulatoryRule } from '@/features/regulatory-rules'
 import { useRegulatoryRules, useRegulatoryRule, useUpdateRegulatoryRule, useDeleteRegulatoryRule, useCreateRegulatoryRule } from '@/features/regulatory-rules'
 import { useCensusYears } from '@/features/communities'
+import { PaginationControls } from '@/components/pagination-controls'
 
 interface RuleParameters {
   // Site Calculation Parameters
@@ -75,6 +76,32 @@ interface RegulatoryRulesManagementProps {
     role: string
   } | null
 }
+
+const toDateInputValue = (date?: string | Date | null) => {
+  if (!date) return ''
+  const parsed = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString().split('T')[0]
+}
+
+const mapRuleToFormValues = (rule: RegulatoryRule) => ({
+  regulatory_rule: rule.regulatory_rule ?? '',
+  name: rule.name ?? '',
+  census_year: rule.year,
+  description: rule.description ?? '',
+  program: rule.program ?? 'Paint',
+  category: rule.category ?? 'HSP',
+  rule_type: rule.rule_type ?? 'Site Requirements',
+  min_population: rule.min_population ?? 0,
+  max_population: rule.max_population ?? null,
+  site_per_population: rule.site_per_population ?? null,
+  base_required_sites: rule.base_required_sites ?? null,
+  event_offset_percentage: rule.event_offset_percentage ?? null,
+  reallocation_percentage: rule.reallocation_percentage ?? null,
+  is_active: rule.is_active ?? true,
+  start_date: toDateInputValue(rule.start_date),
+  end_date: toDateInputValue(rule.end_date),
+})
 
 export default function RegulatoryRulesManagement({
   currentUser,
@@ -193,6 +220,7 @@ export default function RegulatoryRulesManagement({
     resolver: yupResolver(createSchema),
     defaultValues: {
       regulatory_rule: '',
+      name: '',
       census_year: 2024,
       description: '',
       program: 'Paint',
@@ -205,8 +233,8 @@ export default function RegulatoryRulesManagement({
       event_offset_percentage: null,
       reallocation_percentage: null,
       is_active: true,
-      start_date: new Date(),
-      end_date: null,
+      start_date: toDateInputValue(new Date()),
+      end_date: '',
     },
   })
 
@@ -214,6 +242,7 @@ export default function RegulatoryRulesManagement({
     resolver: yupResolver(editSchema),
     defaultValues: {
       regulatory_rule: '',
+      name: '',
       census_year: 2024,
       description: '',
       program: 'Paint',
@@ -226,8 +255,8 @@ export default function RegulatoryRulesManagement({
       event_offset_percentage: null,
       reallocation_percentage: null,
       is_active: true,
-      start_date: new Date(),
-      end_date: null,
+      start_date: toDateInputValue(new Date()),
+      end_date: '',
     },
   })
 
@@ -265,29 +294,13 @@ export default function RegulatoryRulesManagement({
   // Populate edit form when rule data is loaded
   useEffect(() => {
     if (editingRuleData && isEditDialogOpen) {
-      const rule = editingRuleData
-      editForm.reset({
-        name: rule.name,
-        census_year: rule.year,
-        description: rule.description,
-        program: rule.program,
-        category: rule.category,
-        rule_type: rule.rule_type,
-        min_population: rule.min_population || 0,
-        max_population: rule.max_population || null,
-        site_per_population: rule.site_per_population || null,
-        base_required_sites: rule.base_required_sites || null,
-        event_offset_percentage: rule.event_offset_percentage || null,
-        reallocation_percentage: rule.reallocation_percentage || null,
-        is_active: rule.is_active ?? true,
-        start_date: rule.start_date ? new Date(rule.start_date) : new Date(),
-        end_date: rule.end_date ? new Date(rule.end_date) : null,
-      })
+      editForm.reset(mapRuleToFormValues(editingRuleData))
     }
   }, [editingRuleData, isEditDialogOpen, editForm])
 
-  const handleEditRule = (ruleId: string) => {
-    setEditingRuleId(ruleId)
+  const handleEditRule = (rule: RegulatoryRule) => {
+    setEditingRuleId(rule.id.toString())
+    editForm.reset(mapRuleToFormValues(rule))
     setIsEditDialogOpen(true)
   }
 
@@ -474,6 +487,15 @@ export default function RegulatoryRulesManagement({
 
   // Since API returns object with results array, extract the rules array
   const rawRules = regulatoryRulesResponse?.results || []
+  const totalRules = typeof regulatoryRulesResponse?.count === 'number'
+    ? regulatoryRulesResponse!.count
+    : rawRules.length
+  const hasNextPage = typeof regulatoryRulesResponse?.next === 'string'
+    ? Boolean(regulatoryRulesResponse?.next)
+    : false
+  const hasPrevPage = typeof regulatoryRulesResponse?.previous === 'string'
+    ? Boolean(regulatoryRulesResponse?.previous)
+    : false
 
   // Apply client-side sorting
   const rules = useMemo(() => {
@@ -780,7 +802,7 @@ export default function RegulatoryRulesManagement({
                         <Button
                           variant='ghost'
                           size='sm'
-                          onClick={() => handleEditRule(rule.id.toString())}
+                          onClick={() => handleEditRule(rule)}
                           disabled={isLoading}
                         >
                           <Edit className='h-4 w-4' />
@@ -808,65 +830,22 @@ export default function RegulatoryRulesManagement({
             </Table>
           </div>
 
-          {/* Pagination */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-3">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="text-sm text-gray-600">
-                Showing {rules.length} of {rules.length} regulatory rules
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Show:</span>
-                <Select value={pageSize.toString()} onValueChange={(value) => setPageSize(parseInt(value))}>
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-gray-600">per page</span>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page - 1)}
-                  disabled={page <= 1 || isLoading}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-
-                {/* Page Numbers */}
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant={page === 1 ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setPage(1)}
-                    disabled={isLoading}
-                    className="w-8 h-8 p-0"
-                  >
-                    1
-                  </Button>
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page + 1)}
-                  disabled={page >= 1 || isLoading}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            totalCount={totalRules}
+            currentCount={rules.length}
+            onPageChange={(newPage) => setPage(newPage)}
+            isLoading={isLoading}
+            hasNext={hasNextPage}
+            hasPrev={hasPrevPage}
+            label="regulatory rules"
+            pageSizeOptions={[10, 20, 50, 100]}
+            onPageSizeChange={(value) => {
+              setPageSize(value)
+              setPage(1)
+            }}
+          />
         </CardContent>
       </Card>
 

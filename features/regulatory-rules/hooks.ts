@@ -13,6 +13,7 @@ import type {
   RegulatoryRulesQueryParams,
   CreateRegulatoryRuleDto,
   UpdateRegulatoryRuleDto,
+  RegulatoryRulesResponse,
 } from './types'
 
 export const REGULATORY_RULES_QUERY_KEY = 'regulatory-rules'
@@ -21,7 +22,7 @@ export const REGULATORY_RULES_QUERY_KEY = 'regulatory-rules'
  * Hook to fetch all regulatory rules with filters and pagination
  */
 export function useRegulatoryRules(params: RegulatoryRulesQueryParams = {}) {
-  return useQuery({
+  return useQuery<RegulatoryRulesResponse>({
     queryKey: [REGULATORY_RULES_QUERY_KEY, params],
     queryFn: () => fetchRegulatoryRules(params),
     staleTime: 0, // Disable caching for debugging

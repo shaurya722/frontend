@@ -69,3 +69,10 @@ export interface UpdateRegulatoryRuleDto {
   start_date?: string | null
   end_date?: string | null
 }
+
+export interface RegulatoryRulesResponse {
+  count: number
+  next: string | null
+  previous: string | null
+  results: RegulatoryRule[]
+}
