@@ -181,7 +181,7 @@ export default function RegulatoryRulesManagement({
 
   // Create form validation schema
   const createSchema = yup.object({
-    regulatory_rule: yup.string().required('Name is required'),
+    regulatory_rule: yup.string().required('Rule name is required'),
     census_year: yup.number().required('Census year is required'),
     description: yup.string().required('Description is required'),
     program: yup.string().required('Program is required'),
@@ -199,7 +199,8 @@ export default function RegulatoryRulesManagement({
   }).required()
 
   const editSchema = yup.object({
-    regulatory_rule: yup.string().required('Name is required'),
+    regulatory_rule: yup.string().required('Rule identifier is required'),
+    name: yup.string().required('Name is required'),
     census_year: yup.number().required('Census year is required'),
     description: yup.string().required('Description is required'),
     program: yup.string().required('Program is required'),
@@ -220,7 +221,6 @@ export default function RegulatoryRulesManagement({
     resolver: yupResolver(createSchema),
     defaultValues: {
       regulatory_rule: '',
-      name: '',
       census_year: 2024,
       description: '',
       program: 'Paint',
@@ -311,6 +311,7 @@ export default function RegulatoryRulesManagement({
       // Format data to match API structure
       const updateData = {
         regulatory_rule: data.regulatory_rule,
+        name: data.name,
         census_year: data.census_year,
         description: data.description,
         program: data.program,
@@ -335,7 +336,7 @@ export default function RegulatoryRulesManagement({
       setEditingRuleId(null)
       setIsEditDialogOpen(false)
       editForm.reset()
-      setSuccessMessage(`Regulatory rule "${data.regulatory_rule}" updated successfully`)
+      setSuccessMessage(`Regulatory rule "${data.name || data.regulatory_rule}" updated successfully`)
     } catch (error: any) {
       setErrorMessage(error.message || 'Failed to update regulatory rule')
     }
@@ -345,6 +346,7 @@ export default function RegulatoryRulesManagement({
     try {
       const createData = {
         regulatory_rule: data.regulatory_rule,
+        name: data.regulatory_rule,
         census_year: data.census_year,
         program: data.program,
         category: data.category,
@@ -1201,12 +1203,12 @@ export default function RegulatoryRulesManagement({
               <div className='space-y-2'>
                 <Label htmlFor='create-regulatory-rule'>Regulatory Rule *</Label>
                 <Input
-                  id='create-name'
-                  {...createForm.register('name')}
-                  className={createForm.formState.errors.name ? 'border-red-500' : ''}
+                  id='create-regulatory-rule'
+                  {...createForm.register('regulatory_rule')}
+                  className={createForm.formState.errors.regulatory_rule ? 'border-red-500' : ''}
                 />
-                {createForm.formState.errors.name && (
-                  <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.name.message}</p>
+                {createForm.formState.errors.regulatory_rule && (
+                  <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.regulatory_rule.message}</p>
                 )}
               </div>
               <div className='space-y-2'>

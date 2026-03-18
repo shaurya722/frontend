@@ -36,3 +36,31 @@ export const updateSite = async (id: string, siteData: any): Promise<any> => {
   const response = await axiosInstance.put(`/api/sites/${id}/`, siteData);
   return response.data;
 };
+
+export const downloadSiteCensusTemplate = async (): Promise<Blob> => {
+  const response = await axiosInstance.get('/api/sites/census-data/template/', {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const importSiteCensusData = async (file: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await axiosInstance.post('/api/sites/census-data/import-export/', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  return response.data;
+};
+
+export const exportSiteCensusData = async (): Promise<Blob> => {
+  const response = await axiosInstance.get('/api/sites/census-data/import-export/', {
+    responseType: 'blob',
+  });
+
+  return response.data;
+};

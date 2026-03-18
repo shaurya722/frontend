@@ -36,6 +36,7 @@ export interface RegulatoryRulesQueryParams {
 }
 
 export interface CreateRegulatoryRuleDto {
+  name: string
   regulatory_rule: string
   census_year: number
   program: string
@@ -54,6 +55,7 @@ export interface CreateRegulatoryRuleDto {
 }
 
 export interface UpdateRegulatoryRuleDto {
+  name?: string
   regulatory_rule?: string
   census_year?: number
   program?: string

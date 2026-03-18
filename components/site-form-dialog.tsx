@@ -20,7 +20,59 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+
+export const SITE_PROGRAMS = ['Paint', 'Lights', 'Solvents', 'Pesticides', 'Fertilizers'] as const
+export type SiteProgram = typeof SITE_PROGRAMS[number]
+type ProgramSchedule = {
+  start_date: string
+  end_date: string
+}
+export type ProgramSchedules = Record<SiteProgram, ProgramSchedule>
+
+const createEmptyProgramSchedules = (): ProgramSchedules =>
+  SITE_PROGRAMS.reduce((acc, program) => {
+    acc[program] = { start_date: '', end_date: '' }
+    return acc
+  }, {} as ProgramSchedules)
+
+const cloneProgramSchedules = (schedules?: ProgramSchedules): ProgramSchedules => {
+  const source = schedules || createEmptyProgramSchedules()
+  return SITE_PROGRAMS.reduce((acc, program) => {
+    acc[program] = {
+      start_date: source[program]?.start_date || '',
+      end_date: source[program]?.end_date || '',
+    }
+    return acc
+  }, {} as ProgramSchedules)
+}
+
+const createDefaultCollectionSite = (): CollectionSite => ({
+  name: '',
+  service_partner: '',
+  site_type: '',
+  operator_type: '',
+  address: '',
+  municipality_id: '',
+  census_year: undefined,
+  status: 'Active',
+  address_line1: '',
+  address_line2: '',
+  city: '',
+  state_province: '',
+  postal_code: '',
+  community: '',
+  region_district: '',
+  service_area: undefined,
+  latitude: 0,
+  longitude: 0,
+  site_start_date: '',
+  site_end_date: '',
+  programs: [],
+  programSchedules: createEmptyProgramSchedules(),
+  materials_collected: [],
+  collection_scope: [],
+})
 
 // Types
 export interface CollectionSite {
@@ -44,11 +96,39 @@ export interface CollectionSite {
   service_area?: number | string
   latitude?: number
   longitude?: number
-  active_dates?: string
+  site_start_date?: string
+  site_end_date?: string
   // Programs and materials
-  programs: string[]
+  programs: SiteProgram[]
+  programSchedules: ProgramSchedules
   materials_collected: string[]
   collection_scope: string[]
+}
+
+type RequiredFieldMeta = { field: keyof CollectionSite; label: string }
+
+const BASIC_REQUIRED_FIELDS: RequiredFieldMeta[] = [
+  { field: 'name', label: 'Site name' },
+  { field: 'site_type', label: 'Site type' },
+  { field: 'operator_type', label: 'Operator type' },
+  { field: 'address', label: 'Address' },
+  { field: 'municipality_id', label: 'Community' },
+]
+
+const LOCATION_REQUIRED_FIELDS: RequiredFieldMeta[] = [
+  { field: 'address_line1', label: 'Address line 1' },
+  { field: 'city', label: 'City' },
+  { field: 'state_province', label: 'State/Province' },
+  { field: 'postal_code', label: 'Postal/Zip code' },
+  { field: 'community', label: 'Community (census subdivision)' },
+]
+
+const getProgramStartDateKey = (program: SiteProgram) => `program-${program}-start_date`
+
+const isEmptyValue = (value: unknown) => {
+  if (typeof value === 'string') return value.trim().length === 0
+  if (Array.isArray(value)) return value.length === 0
+  return value === undefined || value === null
 }
 
 interface SiteFormDialogProps {
@@ -64,7 +144,6 @@ interface SiteFormDialogProps {
 const siteTypes = ['Collection Site', 'Event', 'Municipal Depot', 'Seasonal Depot', 'Return to Retail', 'Private Depot']
 const operatorTypes = ['Retailer', 'Distributor', 'Municipal', 'First Nation/Indigenous', 'Private Depot', 'Product Care', 'Regional District', 'Regional Service commission', 'Others']
 const statuses = ['Active', 'Inactive']
-const programs = ['Paint', 'Lights', 'Solvents', 'Pesticides', 'Fertilizers']
 const materialsServices = [
   'Paint',
   'Light bulbs',
@@ -98,74 +177,129 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
   isLoading = false,
 }) => {
   const [activeTab, setActiveTab] = useState('basic')
-  const [newSite, setNewSite] = useState<CollectionSite>({
-    name: '',
-    service_partner: '',
-    site_type: '',
-    operator_type: '',
-    address: '',
-    municipality_id: '',
-    census_year: undefined,
-    status: 'Active',
-    address_line1: '',
-    address_line2: '',
-    city: '',
-    state_province: '',
-    postal_code: '',
-    community: '',
-    region_district: '',
-    service_area: undefined,
-    latitude: 0,
-    longitude: 0,
-    active_dates: '',
-    programs: [],
-    materials_collected: [],
-    collection_scope: [],
-  })
+  const [newSite, setNewSite] = useState<CollectionSite>(createDefaultCollectionSite())
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   const { data: censusYears } = useCensusYears()
   const { data: communities, isLoading: communitiesLoading } = useCommunityDropdown(
     censusYears?.years?.find(cy => cy.id === newSite.census_year)?.year
   )
+  const { toast } = useToast()
+
+  const hasError = (key: string) => Boolean(errors[key])
+  const getFieldClasses = (key: string) =>
+    hasError(key) ? 'border-destructive focus-visible:ring-destructive' : undefined
+  const renderErrorMessage = (key: string) =>
+    errors[key] ? <p className='text-xs text-destructive'>{errors[key]}</p> : null
+
+  const clearError = (key: string) => {
+    setErrors(prev => {
+      if (!(key in prev)) return prev
+      const { [key]: _removed, ...rest } = prev
+      return rest
+    })
+  }
+
+  const validateForm = () => {
+    const nextErrors: Record<string, string> = {}
+    const markError = (key: string, message: string) => {
+      if (!nextErrors[key]) {
+        nextErrors[key] = message
+      }
+    }
+
+    BASIC_REQUIRED_FIELDS.forEach(({ field, label }) => {
+      if (isEmptyValue(newSite[field])) {
+        markError(field, `${label} is required`)
+      }
+    })
+
+    LOCATION_REQUIRED_FIELDS.forEach(({ field, label }) => {
+      if (isEmptyValue(newSite[field])) {
+        markError(field, `${label} is required`)
+      }
+    })
+
+    if (
+      newSite.site_start_date &&
+      newSite.site_end_date &&
+      new Date(newSite.site_start_date) > new Date(newSite.site_end_date)
+    ) {
+      markError('site_end_date', 'End date cannot be earlier than the start date')
+    }
+
+    newSite.programs.forEach(program => {
+      const schedule = newSite.programSchedules[program]
+      if (!schedule || isEmptyValue(schedule.start_date)) {
+        markError(
+          getProgramStartDateKey(program),
+          `${program} start date is required when the program is enabled`
+        )
+      }
+    })
+
+    return nextErrors
+  }
 
   // Initialize form data when dialog opens or site changes
   useEffect(() => {
-    if (isOpen && site && mode === 'edit') {
-      setNewSite(site)
-    } else if (isOpen && mode === 'add') {
+    if (!isOpen) return
+
+    if (site && mode === 'edit') {
       setNewSite({
-        name: '',
-        service_partner: '',
-        site_type: '',
-        operator_type: '',
-        address: '',
-        municipality_id: '',
-        census_year: undefined,
-        status: 'Active',
-        address_line1: '',
-        address_line2: '',
-        city: '',
-        state_province: '',
-        postal_code: '',
-        community: '',
-        region_district: '',
-        service_area: undefined,
-        latitude: 0,
-        longitude: 0,
-        active_dates: '',
-        programs: [],
-        materials_collected: [],
-        collection_scope: [],
+        ...site,
+        programs: [...site.programs],
+        programSchedules: cloneProgramSchedules(site.programSchedules),
+        materials_collected: [...site.materials_collected],
+        collection_scope: [...site.collection_scope],
       })
+    } else if (mode === 'add') {
+      setNewSite(createDefaultCollectionSite())
     }
+
+    setErrors({})
   }, [isOpen, site, mode])
 
-  const handleProgramChange = (program: string, checked: boolean) => {
+  const handleProgramChange = (program: SiteProgram, checked: boolean) => {
+    const startKey = getProgramStartDateKey(program)
+    if (!checked) {
+      clearError(startKey)
+    }
+    setNewSite(prev => {
+      const exists = prev.programs.includes(program)
+      let nextPrograms: SiteProgram[] = prev.programs
+
+      if (checked && !exists) {
+        nextPrograms = [...prev.programs, program]
+      } else if (!checked && exists) {
+        nextPrograms = prev.programs.filter(p => p !== program)
+      }
+
+      const nextSchedules = !checked
+        ? {
+            ...prev.programSchedules,
+            [program]: { start_date: '', end_date: '' },
+          }
+        : prev.programSchedules
+
+      return {
+        ...prev,
+        programs: nextPrograms,
+        programSchedules: nextSchedules,
+      }
+    })
+  }
+
+  const handleProgramScheduleChange = (program: SiteProgram, field: keyof ProgramSchedule, value: string) => {
     setNewSite(prev => ({
       ...prev,
-      programs: checked
-        ? [...prev.programs, program]
-        : prev.programs.filter(p => p !== program),
+      programSchedules: {
+        ...prev.programSchedules,
+        [program]: {
+          ...prev.programSchedules[program],
+          [field]: value,
+        },
+      },
     }))
   }
 
@@ -188,11 +322,23 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
   }
 
   const handleAddSite = () => {
+    const validationErrors = validateForm()
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors)
+      toast({
+        variant: 'destructive',
+        title: 'Missing required information',
+        description: 'Please fill in the highlighted fields before continuing.',
+      })
+      return
+    }
+
     onSubmit(newSite)
   }
 
   const handleClose = () => {
     setActiveTab('basic')
+    setErrors({})
     onClose()
   }
 
@@ -224,12 +370,15 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
               <Input
                 id='name'
                 value={newSite.name}
-                onChange={(e) =>
+                className={getFieldClasses('name')}
+                onChange={(e) => {
+                  clearError('name')
                   setNewSite({ ...newSite, name: e.target.value })
-                }
+                }}
                 placeholder='Enter site name'
                 required
               />
+              {renderErrorMessage('name')}
             </div>
 
             <div className='space-y-2'>
@@ -256,11 +405,12 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                 <Label htmlFor='type'>Site Type *</Label>
                 <Select
                   value={newSite.site_type}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    clearError('site_type')
                     setNewSite({ ...newSite, site_type: value })
-                  }
+                  }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={getFieldClasses('site_type')}>
                     <SelectValue placeholder='Select site type' />
                   </SelectTrigger>
                   <SelectContent>
@@ -271,17 +421,19 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
+                {renderErrorMessage('site_type')}
               </div>
 
               <div className='space-y-2'>
                 <Label htmlFor='operator_type'>Operator Type *</Label>
                 <Select
                   value={newSite.operator_type}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    clearError('operator_type')
                     setNewSite({ ...newSite, operator_type: value })
-                  }
+                  }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={getFieldClasses('operator_type')}>
                     <SelectValue placeholder='Select operator type' />
                   </SelectTrigger>
                   <SelectContent>
@@ -292,6 +444,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
+                {renderErrorMessage('operator_type')}
               </div>
             </div>
 
@@ -300,12 +453,15 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
               <Input
                 id='address'
                 value={newSite.address}
-                onChange={(e) =>
+                className={getFieldClasses('address')}
+                onChange={(e) => {
+                  clearError('address')
                   setNewSite({ ...newSite, address: e.target.value })
-                }
+                }}
                 placeholder='Enter complete address'
                 required
               />
+              {renderErrorMessage('address')}
             </div>
 
             <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
@@ -334,12 +490,13 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                 <Label htmlFor='municipality'>Community *</Label>
                 <Select
                   value={newSite.municipality_id}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    clearError('municipality_id')
                     setNewSite({ ...newSite, municipality_id: value })
-                  }
+                  }}
                   disabled={!newSite.census_year || communitiesLoading}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={getFieldClasses('municipality_id')}>
                     <SelectValue placeholder={newSite.census_year ? (communitiesLoading ? 'Loading communities...' : 'Select community') : 'Select census year first'} />
                   </SelectTrigger>
                   <SelectContent>
@@ -353,6 +510,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
+                {renderErrorMessage('municipality_id')}
               </div>
 
               <div className='space-y-2'>
@@ -388,15 +546,18 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                 <Input
                   id='address_line1'
                   value={newSite.address_line1 || ''}
-                  onChange={(e) =>
+                  className={getFieldClasses('address_line1')}
+                  onChange={(e) => {
+                    clearError('address_line1')
                     setNewSite({
                       ...newSite,
                       address_line1: e.target.value,
                     })
-                  }
+                  }}
                   placeholder='Street address, P.O. box, etc.'
                   required
                 />
+                {renderErrorMessage('address_line1')}
               </div>
 
               <div className='space-y-2'>
@@ -421,12 +582,15 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                 <Input
                   id='city'
                   value={newSite.city || ''}
-                  onChange={(e) =>
+                  className={getFieldClasses('city')}
+                  onChange={(e) => {
+                    clearError('city')
                     setNewSite({ ...newSite, city: e.target.value })
-                  }
+                  }}
                   placeholder='City'
                   required
                 />
+                {renderErrorMessage('city')}
               </div>
 
               <div className='space-y-2'>
@@ -434,15 +598,18 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                 <Input
                   id='state_province'
                   value={newSite.state_province || ''}
-                  onChange={(e) =>
+                  className={getFieldClasses('state_province')}
+                  onChange={(e) => {
+                    clearError('state_province')
                     setNewSite({
                       ...newSite,
                       state_province: e.target.value,
                     })
-                  }
+                  }}
                   placeholder='State or Province'
                   required
                 />
+                {renderErrorMessage('state_province')}
               </div>
 
               <div className='space-y-2'>
@@ -450,15 +617,18 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                 <Input
                   id='postal_code'
                   value={newSite.postal_code || ''}
-                  onChange={(e) =>
+                  className={getFieldClasses('postal_code')}
+                  onChange={(e) => {
+                    clearError('postal_code')
                     setNewSite({
                       ...newSite,
                       postal_code: e.target.value,
                     })
-                  }
+                  }}
                   placeholder='Postal or ZIP code'
                   required
                 />
+                {renderErrorMessage('postal_code')}
               </div>
             </div>
 
@@ -466,11 +636,12 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
               <Label htmlFor='community'>Community (Census Subdivision) *</Label>
               <Select
                 value={newSite.community}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
+                  clearError('community')
                   setNewSite({ ...newSite, community: value })
-                }
+                }}
               >
-                <SelectTrigger>
+                <SelectTrigger className={getFieldClasses('community')}>
                   <SelectValue placeholder='Select community from census data' />
                 </SelectTrigger>
                 <SelectContent>
@@ -484,6 +655,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                   ))}
                 </SelectContent>
               </Select>
+              {renderErrorMessage('community')}
             </div>
 
             <div className='space-y-2'>
@@ -569,43 +741,105 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
               </div>
             </div>
 
-            <div className='space-y-2'>
-              <Label htmlFor='active_dates'>Active Dates</Label>
-              <Input
-                id='active_dates'
-                type='date'
-                value={newSite.active_dates}
-                onChange={(e) =>
-                  setNewSite({
-                    ...newSite,
-                    active_dates: e.target.value,
-                  })
-                }
-              />
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+              <div className='space-y-2'>
+                <Label htmlFor='site_start_date'>Site Start Date</Label>
+                <Input
+                  id='site_start_date'
+                  type='date'
+                  value={newSite.site_start_date || ''}
+                  onChange={(e) => {
+                    clearError('site_start_date')
+                    setNewSite({
+                      ...newSite,
+                      site_start_date: e.target.value,
+                    })
+                  }}
+                />
+                {errors.site_start_date && (
+                  <p className='text-xs text-destructive'>{errors.site_start_date}</p>
+                )}
+              </div>
+
+              <div className='space-y-2'>
+                <Label htmlFor='site_end_date'>Site End Date</Label>
+                <Input
+                  id='site_end_date'
+                  type='date'
+                  value={newSite.site_end_date || ''}
+                  onChange={(e) => {
+                    clearError('site_end_date')
+                    setNewSite({
+                      ...newSite,
+                      site_end_date: e.target.value,
+                    })
+                  }}
+                />
+                {errors.site_end_date && (
+                  <p className='text-xs text-destructive'>{errors.site_end_date}</p>
+                )}
+              </div>
             </div>
           </TabsContent>
 
           <TabsContent value='programs' className='space-y-4'>
-            <div className='space-x-2 '>
-              <Label className='text-md font-bold'>Programs *</Label>
-              <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3'>
-                {programs.map((program) => (
-                  <div key={program} className='flex items-center space-x-2'>
-                    <Checkbox
-                      id={`program-${program}`}
-                      checked={newSite.programs.includes(program)}
-                      onCheckedChange={(checked) =>
-                        handleProgramChange(program, checked === true)
-                      }
-                    />
-                    <label
-                      htmlFor={`program-${program}`}
-                      className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                    >
-                      {program}
-                    </label>
-                  </div>
-                ))}
+            <div className='space-y-3'>
+              <Label className='text-md font-bold'>Programs & Scheduling *</Label>
+              <div className='grid grid-cols-1 gap-3'>
+                {SITE_PROGRAMS.map((program) => {
+                  const isEnabled = newSite.programs.includes(program)
+                  const schedule = newSite.programSchedules[program]
+                  const startKey = getProgramStartDateKey(program)
+                  return (
+                    <div key={program} className='rounded-lg border border-gray-200 p-3 space-y-3'>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id={`program-${program}`}
+                          checked={isEnabled}
+                          onCheckedChange={(checked) =>
+                            handleProgramChange(program, checked === true)
+                          }
+                        />
+                        <label
+                          htmlFor={`program-${program}`}
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          {program}
+                        </label>
+                      </div>
+                      <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+                        <div className='space-y-1'>
+                          <Label className='text-xs text-muted-foreground'>Start Date *</Label>
+                          <Input
+                            type='date'
+                            value={schedule?.start_date || ''}
+                            className={getFieldClasses(startKey)}
+                            onChange={(event) => {
+                              clearError(startKey)
+                              handleProgramScheduleChange(program, 'start_date', event.target.value)
+                            }}
+                            disabled={!isEnabled}
+                          />
+                          {isEnabled && renderErrorMessage(startKey)}
+                        </div>
+                        <div className='space-y-1'>
+                          <Label className='text-xs text-muted-foreground'>End Date</Label>
+                          <Input
+                            type='date'
+                            value={schedule?.end_date || ''}
+                            onChange={(event) =>
+                              handleProgramScheduleChange(program, 'end_date', event.target.value)
+                            }
+                            disabled={!isEnabled}
+                          />
+                        </div>
+                      </div>
+                      {!isEnabled && (
+                        <p className='text-xs text-muted-foreground'>Enable {program} to set its schedule.</p>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
 

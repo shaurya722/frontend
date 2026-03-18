@@ -41,10 +41,11 @@ import {
 import { Input } from '@/components/ui/input'
 
 import { Switch } from '@/components/ui/switch'
-import { useCompliance } from '@/features/compliance/hooks'
+import { useCompliance, useRecalculateCompliance } from '@/features/compliance/hooks'
 import { ComplianceFilters } from '@/features/compliance/types'
 import { useCensusYears } from '@/features/communities'
 import { PaginationControls } from '@/components/pagination-controls'
+import { useToast } from '@/hooks/use-toast'
 
 export default function ComplianceAnalysis() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -79,6 +80,8 @@ export default function ComplianceAnalysis() {
   )
 
   const { data, isLoading, error } = useCompliance(filters)
+  const { mutateAsync: recalculateCompliance, isPending: isRecalculating } = useRecalculateCompliance()
+  const { toast } = useToast()
 
   // Fetch census years
   const { data: censusYearsData, isLoading: isCensusYearsLoading } = useCensusYears()
@@ -112,6 +115,52 @@ export default function ComplianceAnalysis() {
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage)
+  }
+
+  const handleRecalculate = async () => {
+    if (selectedYear === 'all') {
+      toast({
+        title: 'Select year',
+        description: 'Choose a specific census year to recalculate compliance.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const selectedYearNumber = Number(selectedYear)
+    if (Number.isNaN(selectedYearNumber)) {
+      toast({
+        title: 'Invalid year',
+        description: 'Unable to determine the selected census year.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const censusYearEntry = censusYearsData?.years?.find((year) => year.year === selectedYearNumber)
+
+    if (!censusYearEntry?.id) {
+      toast({
+        title: 'Year not found',
+        description: 'Could not locate the census year identifier.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      await recalculateCompliance(censusYearEntry.id)
+      toast({
+        title: 'Calculation complete',
+        description: `Compliance recalculated for ${censusYearEntry.year}.`,
+      })
+    } catch (mutationError: any) {
+      toast({
+        title: 'Calculation failed',
+        description: mutationError?.message || 'Unable to recalculate compliance. Please try again.',
+        variant: 'destructive',
+      })
+    }
   }
 
   if (error) {
@@ -209,7 +258,6 @@ export default function ComplianceAnalysis() {
                   id='event-offsets'
                 />
               </div>
-
               {/* Status Filter */}
               <div className='flex items-center gap-2'>
                 <Label className='text-sm whitespace-nowrap'>Status</Label>
@@ -236,6 +284,11 @@ export default function ComplianceAnalysis() {
                 <Switch
                   id='direct-service-offsets'
                 />
+              </div>
+              <div className='flex items-center gap-2'>
+                <Button onClick={handleRecalculate} disabled={isRecalculating}>
+                  {isRecalculating ? 'Calculating…' : 'Calculate'}
+                </Button>
               </div>
             </div>
           </div>

@@ -33,6 +33,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useToast } from '@/hooks/use-toast'
 import {
   Select,
   SelectContent,
@@ -55,6 +56,7 @@ import {
   Filter,
   Download,
   Upload,
+  UploadCloud,
   Plus,
   Edit,
   Trash2,
@@ -71,12 +73,81 @@ import {
   Building2,
 } from 'lucide-react'
 
-import { useSites, useSite, useCreateSite, useUpdateSite, useDeleteSite } from '@/features/sites/hooks'
-import { SitesFilters } from '@/features/sites/types'
+import {
+  useSites,
+  useSite,
+  useCreateSite,
+  useUpdateSite,
+  useDeleteSite,
+  useImportSiteCensusData,
+  useExportSiteCensusData,
+  downloadSiteCensusTemplate,
+} from '@/features/sites'
+import type { SitesFilters, Site } from '@/features/sites'
 import { useCensusYears } from '@/features/communities/hooks'
 
-import SiteFormDialog, { type CollectionSite } from './site-form-dialog'
+import SiteFormDialog, { type CollectionSite, SITE_PROGRAMS, type SiteProgram } from './site-form-dialog'
 import { PaginationControls } from '@/components/pagination-controls'
+
+const toDateInputValue = (value?: string | null) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString().split('T')[0]
+}
+
+const toApiDateValue = (value?: string | null) => {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toISOString()
+}
+
+const buildProgramSchedulesFromSite = (site: Site): CollectionSite['programSchedules'] => ({
+  Paint: {
+    start_date: toDateInputValue(site.program_paint_start_date),
+    end_date: toDateInputValue(site.program_paint_end_date),
+  },
+  Lights: {
+    start_date: toDateInputValue(site.program_lights_start_date),
+    end_date: toDateInputValue(site.program_lights_end_date),
+  },
+  Solvents: {
+    start_date: toDateInputValue(site.program_solvents_start_date),
+    end_date: toDateInputValue(site.program_solvents_end_date),
+  },
+  Pesticides: {
+    start_date: toDateInputValue(site.program_pesticides_start_date),
+    end_date: toDateInputValue(site.program_pesticides_end_date),
+  },
+  Fertilizers: {
+    start_date: toDateInputValue(site.program_fertilizers_start_date),
+    end_date: toDateInputValue(site.program_fertilizers_end_date),
+  },
+})
+
+const buildProgramPayload = (siteData: CollectionSite) => {
+  const includes = (program: SiteProgram) => siteData.programs.includes(program)
+  const schedule = (program: SiteProgram) => siteData.programSchedules?.[program] || { start_date: '', end_date: '' }
+
+  return {
+    program_paint: includes('Paint'),
+    program_paint_start_date: includes('Paint') ? toApiDateValue(schedule('Paint').start_date) : null,
+    program_paint_end_date: includes('Paint') ? toApiDateValue(schedule('Paint').end_date) : null,
+    program_lights: includes('Lights'),
+    program_lights_start_date: includes('Lights') ? toApiDateValue(schedule('Lights').start_date) : null,
+    program_lights_end_date: includes('Lights') ? toApiDateValue(schedule('Lights').end_date) : null,
+    program_solvents: includes('Solvents'),
+    program_solvents_start_date: includes('Solvents') ? toApiDateValue(schedule('Solvents').start_date) : null,
+    program_solvents_end_date: includes('Solvents') ? toApiDateValue(schedule('Solvents').end_date) : null,
+    program_pesticides: includes('Pesticides'),
+    program_pesticides_start_date: includes('Pesticides') ? toApiDateValue(schedule('Pesticides').start_date) : null,
+    program_pesticides_end_date: includes('Pesticides') ? toApiDateValue(schedule('Pesticides').end_date) : null,
+    program_fertilizers: includes('Fertilizers'),
+    program_fertilizers_start_date: includes('Fertilizers') ? toApiDateValue(schedule('Fertilizers').start_date) : null,
+    program_fertilizers_end_date: includes('Fertilizers') ? toApiDateValue(schedule('Fertilizers').end_date) : null,
+  }
+}
 
 export default function SiteManagement() {
   const [search, setSearch] = useState('')
@@ -98,9 +169,25 @@ export default function SiteManagement() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [siteToDelete, setSiteToDelete] = useState<any | null>(null)
 
+  // Import dialog state
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null)
+  const [importUploadError, setImportUploadError] = useState<string | null>(null)
+  const [templateDownloading, setTemplateDownloading] = useState(false)
+  const [isDragActive, setIsDragActive] = useState(false)
+  const [importErrorDetails, setImportErrorDetails] = useState<{
+    error?: string
+    expected_headers?: string[]
+    provided_headers?: string[]
+    rows?: string[]
+    details?: string
+  } | null>(null)
+
   // Success/Error messages
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+
+  const { toast } = useToast()
 
   const { data: censusYears } = useCensusYears()
 
@@ -133,6 +220,8 @@ export default function SiteManagement() {
   const deleteMutation = useDeleteSite()
   const createSiteMutation = useCreateSite()
   const updateSiteMutation = useUpdateSite()
+  const importSiteMutation = useImportSiteCensusData()
+  const exportSiteMutation = useExportSiteCensusData()
 
   const totalSites = data?.count || 0
   const activeSites = data?.results.filter(site => site.is_active).length || 0
@@ -143,6 +232,8 @@ export default function SiteManagement() {
 
   useEffect(() => {
     if (siteData && dialogMode === 'edit') {
+      const programSchedules = buildProgramSchedulesFromSite(siteData)
+
       const collectionSite: CollectionSite = {
         id: siteData.id.toString(),
         name: siteData.site_name,
@@ -163,8 +254,10 @@ export default function SiteManagement() {
         service_area: siteData.service_area,
         latitude: parseFloat(siteData.address_latitude) || 0,
         longitude: parseFloat(siteData.address_longitude) || 0,
-        active_dates: siteData.site_start_date || '',
-        programs: [], // Map from site data
+        site_start_date: toDateInputValue(siteData.site_start_date),
+        site_end_date: toDateInputValue(siteData.site_end_date),
+        programs: [],
+        programSchedules,
         materials_collected: [], // Map from site data
         collection_scope: [], // Map from site data
       }
@@ -210,42 +303,35 @@ export default function SiteManagement() {
   const handleSiteSubmit = async (siteData: CollectionSite) => {
     console.log('handleSiteSubmit called with:', siteData)
     try {
+      const basePayload = {
+        site_name: siteData.name,
+        census_year: siteData.census_year,
+        community: siteData.municipality_id,
+        site_type: siteData.site_type,
+        operator_type: siteData.operator_type,
+        service_partner: siteData.service_partner || '',
+        address_line_1: siteData.address_line1 || '',
+        address_line_2: siteData.address_line2 || '',
+        address_city: siteData.city || '',
+        address_postal_code: siteData.postal_code || '',
+        region: siteData.state_province || '',
+        service_area: siteData.service_area?.toString() || '',
+        address_latitude: siteData.latitude || 0,
+        address_longitude: siteData.longitude || 0,
+        latitude: siteData.latitude || 0,
+        longitude: siteData.longitude || 0,
+        is_active: siteData.status === 'Active',
+        site_start_date: toApiDateValue(siteData.site_start_date),
+        site_end_date: toApiDateValue(siteData.site_end_date),
+      }
+
+      const programPayload = buildProgramPayload(siteData)
+
       if (dialogMode === 'add') {
         // Transform the data to match API expectations
         const apiData = {
-          site_name: siteData.name,
-          census_year: siteData.census_year,
-          community: siteData.municipality_id,
-          site_type: siteData.site_type,
-          operator_type: siteData.operator_type,
-          service_partner: siteData.service_partner || '',
-          address_line_1: siteData.address_line1 || '',
-          address_line_2: siteData.address_line2 || '',
-          address_city: siteData.city || '',
-          address_postal_code: siteData.postal_code || '',
-          region: siteData.state_province || '',
-          service_area: siteData.service_area?.toString() || '',
-          address_latitude: siteData.latitude || 0,
-          address_longitude: siteData.longitude || 0,
-          latitude: siteData.latitude || 0,
-          longitude: siteData.longitude || 0,
-          is_active: siteData.status === 'Active',
-          site_start_date: siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_paint: siteData.programs.includes('Paint'),
-          program_paint_start_date: siteData.programs.includes('Paint') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_paint_end_date: siteData.programs.includes('Paint') ? null : null,
-          program_lights: siteData.programs.includes('Lights'),
-          program_lights_start_date: siteData.programs.includes('Lights') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_lights_end_date: siteData.programs.includes('Lights') ? null : null,
-          program_solvents: siteData.programs.includes('Solvents'),
-          program_solvents_start_date: siteData.programs.includes('Solvents') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_solvents_end_date: siteData.programs.includes('Solvents') ? null : null,
-          program_pesticides: siteData.programs.includes('Pesticides'),
-          program_pesticides_start_date: siteData.programs.includes('Pesticides') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_pesticides_end_date: siteData.programs.includes('Pesticides') ? null : null,
-          program_fertilizers: siteData.programs.includes('Fertilizers'),
-          program_fertilizers_start_date: siteData.programs.includes('Fertilizers') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_fertilizers_end_date: siteData.programs.includes('Fertilizers') ? null : null,
+          ...basePayload,
+          ...programPayload,
         }
 
         console.log('Transformed API data:', apiData)
@@ -257,39 +343,8 @@ export default function SiteManagement() {
         // Update site
         console.log('Updating site:', siteData)
         const apiData = {
-          site_name: siteData.name,
-          census_year: siteData.census_year,
-          community: siteData.municipality_id,
-          site_type: siteData.site_type,
-          operator_type: siteData.operator_type,
-          service_partner: siteData.service_partner || '',
-          address_line_1: siteData.address_line1 || '',
-          address_line_2: siteData.address_line2 || '',
-          address_city: siteData.city || '',
-          address_postal_code: siteData.postal_code || '',
-          region: siteData.state_province || '',
-          service_area: siteData.service_area?.toString() || '',
-          address_latitude: siteData.latitude || 0,
-          address_longitude: siteData.longitude || 0,
-          latitude: siteData.latitude || 0,
-          longitude: siteData.longitude || 0,
-          is_active: siteData.status === 'Active',
-          site_start_date: siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_paint: siteData.programs.includes('Paint'),
-          program_paint_start_date: siteData.programs.includes('Paint') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_paint_end_date: siteData.programs.includes('Paint') ? null : null,
-          program_lights: siteData.programs.includes('Lights'),
-          program_lights_start_date: siteData.programs.includes('Lights') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_lights_end_date: siteData.programs.includes('Lights') ? null : null,
-          program_solvents: siteData.programs.includes('Solvents'),
-          program_solvents_start_date: siteData.programs.includes('Solvents') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_solvents_end_date: siteData.programs.includes('Solvents') ? null : null,
-          program_pesticides: siteData.programs.includes('Pesticides'),
-          program_pesticides_start_date: siteData.programs.includes('Pesticides') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_pesticides_end_date: siteData.programs.includes('Pesticides') ? null : null,
-          program_fertilizers: siteData.programs.includes('Fertilizers'),
-          program_fertilizers_start_date: siteData.programs.includes('Fertilizers') && siteData.active_dates ? new Date(siteData.active_dates).toISOString() : null,
-          program_fertilizers_end_date: siteData.programs.includes('Fertilizers') ? null : null,
+          ...basePayload,
+          ...programPayload,
         }
 
         console.log('Transformed update API data:', apiData)
@@ -330,6 +385,147 @@ export default function SiteManagement() {
     }
   }
 
+  const handleOpenImportDialog = () => {
+    setIsImportDialogOpen(true)
+    setSelectedImportFile(null)
+    setImportUploadError(null)
+    setImportErrorDetails(null)
+  }
+
+  const handleCloseImportDialog = () => {
+    setIsImportDialogOpen(false)
+    setSelectedImportFile(null)
+    setImportUploadError(null)
+    setIsDragActive(false)
+  }
+
+  const handleTemplateDownload = async () => {
+    try {
+      setTemplateDownloading(true)
+      const blob = await downloadSiteCensusTemplate()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'site-census-template.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({
+        title: 'Download failed',
+        description: error?.message || 'Unable to download site census template.',
+        variant: 'destructive',
+      })
+    } finally {
+      setTemplateDownloading(false)
+    }
+  }
+
+  const handleFileSelection = (file: File | null) => {
+    if (!file) {
+      setSelectedImportFile(null)
+      setImportUploadError(null)
+      return
+    }
+
+    const isCsv = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')
+    if (!isCsv) {
+      setImportUploadError('Invalid format. Only .csv files are supported for import.')
+      setSelectedImportFile(null)
+      return
+    }
+
+    setSelectedImportFile(file)
+    setImportUploadError(null)
+  }
+
+  const handleImportFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null
+    handleFileSelection(file)
+  }
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!isDragActive) setIsDragActive(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setIsDragActive(false)
+    }
+  }
+
+  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragActive(false)
+    const file = event.dataTransfer?.files?.[0]
+    if (file) {
+      handleFileSelection(file)
+    }
+  }
+
+  const handleImportSubmit = async () => {
+    if (!selectedImportFile) {
+      toast({
+        title: 'No file selected',
+        description: 'Please choose a CSV file to import.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      await importSiteMutation.mutateAsync(selectedImportFile)
+      toast({
+        title: 'Import complete',
+        description: 'Site census data processed successfully.',
+      })
+      setImportErrorDetails(null)
+      handleCloseImportDialog()
+    } catch (error: any) {
+      const errorPayload =
+        error?.response?.data ||
+        error?.data ||
+        { error: error?.message || 'Failed to import site census data.' }
+
+      toast({
+        title: 'Import failed',
+        description:
+          typeof errorPayload?.error === 'string'
+            ? errorPayload.error
+            : 'Check the CSV and try again.',
+        variant: 'destructive',
+      })
+      setImportErrorDetails(errorPayload)
+      handleCloseImportDialog()
+    }
+  }
+
+  const handleExportSites = async () => {
+    try {
+      const blob = await exportSiteMutation.mutateAsync()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'site-census-data.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({
+        title: 'Export failed',
+        description: error?.message || 'Unable to export site census data.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   return (
     <div className='space-y-6'>
       {/* Success/Error Messages */}
@@ -343,6 +539,42 @@ export default function SiteManagement() {
           <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
         </Alert>
       )}
+      {importErrorDetails && (
+        <Alert variant='destructive' className='border-red-300 bg-red-50'>
+          <div className='space-y-2'>
+            <p className='font-semibold'>
+              {importErrorDetails.error || 'Import failed'}
+            </p>
+            {importErrorDetails.details && (
+              <p className='text-sm text-red-900'>{importErrorDetails.details}</p>
+            )}
+            {importErrorDetails.expected_headers && (
+              <div>
+                <p className='text-sm font-medium'>Expected headers:</p>
+                <p className='text-sm text-red-900'>
+                  {importErrorDetails.expected_headers.join(', ')}
+                </p>
+              </div>
+            )}
+            {importErrorDetails.provided_headers && (
+              <div>
+                <p className='text-sm font-medium'>Provided headers:</p>
+                <pre className='whitespace-pre-wrap wrap-break-word rounded-md bg-white/70 p-2 text-xs text-red-900 max-h-40 overflow-auto'>
+                  {importErrorDetails.provided_headers.join('\n')}
+                </pre>
+              </div>
+            )}
+            {importErrorDetails.rows && importErrorDetails.rows.length > 0 && (
+              <div>
+                <p className='text-sm font-medium'>Problem rows:</p>
+                <pre className='whitespace-pre-wrap wrap-break-word rounded-md bg-white/70 p-2 text-xs text-red-900 max-h-40 overflow-auto'>
+                  {importErrorDetails.rows.join('\n')}
+                </pre>
+              </div>
+            )}
+          </div>
+        </Alert>
+      )}
 
       {/* Search & Filters */}
       <Card>
@@ -353,6 +585,7 @@ export default function SiteManagement() {
               <Button
                 variant='outline'
                 size='sm'
+                onClick={handleOpenImportDialog}
               >
                 <Upload className='w-4 h-4 mr-2' />
                 Import CSV
@@ -360,9 +593,11 @@ export default function SiteManagement() {
               <Button
                 variant='outline'
                 size='sm'
+                onClick={handleExportSites}
+                disabled={exportSiteMutation.isPending}
               >
                 <Download className='w-4 h-4 mr-2' />
-                Export
+                {exportSiteMutation.isPending ? 'Exporting...' : 'Export'}
               </Button>
             </div>
           </div>
@@ -378,6 +613,63 @@ export default function SiteManagement() {
                   onChange={(e) => setSearch(e.target.value)}
                   className='pl-8'
                 />
+
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => (open ? handleOpenImportDialog() : handleCloseImportDialog())}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import Site Census Data</DialogTitle>
+            <DialogDescription>
+              Upload a CSV that follows the site census template to bulk import entries.
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-4'>
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm text-gray-600'>Need a reference?</span>
+              <Button variant='secondary' onClick={handleTemplateDownload} disabled={templateDownloading}>
+                <Download className='h-4 w-4 mr-2' />
+                {templateDownloading ? 'Preparing download...' : 'Download sample CSV'}
+              </Button>
+            </div>
+            <div
+              className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200'}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleFileDrop}
+            >
+              <input
+                id='site-import-file'
+                type='file'
+                accept='.csv'
+                className='hidden'
+                onChange={handleImportFileChange}
+              />
+              <label htmlFor='site-import-file' className='flex flex-col items-center gap-2 cursor-pointer'>
+                <UploadCloud className='h-6 w-6 text-gray-400' />
+                <div>
+                  <p className='text-sm font-medium text-gray-900'>Click to select or drag and drop</p>
+                  <p className='text-xs text-gray-500'>CSV files only • Max 10MB</p>
+                </div>
+              </label>
+              {selectedImportFile && (
+                <p className='mt-3 text-sm text-gray-700'>
+                  Selected file: <span className='font-medium'>{selectedImportFile.name}</span>
+                </p>
+              )}
+              {importUploadError && (
+                <p className='mt-3 text-sm text-red-600'>{importUploadError}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={handleCloseImportDialog}>
+              Cancel
+            </Button>
+            <Button onClick={handleImportSubmit} disabled={importSiteMutation.isPending || !selectedImportFile}>
+              {importSiteMutation.isPending ? 'Importing...' : 'Import Data'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
               </div>
             </div>
             <div className='flex gap-2'>

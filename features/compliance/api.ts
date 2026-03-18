@@ -20,3 +20,11 @@ export const fetchCompliance = async (
   )
   return response.data
 };
+
+export const recalculateCompliance = async (censusYearId: number) => {
+  const response = await axiosInstance.post('/api/compliance/recalculate/', {
+    census_year: censusYearId,
+  })
+
+  return response.data
+};

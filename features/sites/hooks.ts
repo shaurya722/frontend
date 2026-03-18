@@ -1,5 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchSites, fetchSiteById, createSite, deleteSiteById, updateSite } from "./api";
+import {
+  fetchSites,
+  fetchSiteById,
+  createSite,
+  deleteSiteById,
+  updateSite,
+  importSiteCensusData,
+  exportSiteCensusData,
+} from "./api";
 import { SitesFilters } from "./types";
 
 export const useSites = (filters: SitesFilters = {}) => {
@@ -44,5 +52,21 @@ export const useUpdateSite = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
     },
+  });
+};
+
+export const useImportSiteCensusData = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => importSiteCensusData(file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sites"] });
+    },
+  });
+};
+
+export const useExportSiteCensusData = () => {
+  return useMutation({
+    mutationFn: () => exportSiteCensusData(),
   });
 };
