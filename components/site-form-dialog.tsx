@@ -141,7 +141,7 @@ interface SiteFormDialogProps {
 }
 
 // Mock data - replace with actual data from your API
-const siteTypes = ['Collection Site', 'Event', 'Municipal Depot', 'Seasonal Depot', 'Return to Retail', 'Private Depot']
+const siteTypes = ['Collection Site', 'Event']
 const operatorTypes = ['Retailer', 'Distributor', 'Municipal', 'First Nation/Indigenous', 'Private Depot', 'Product Care', 'Regional District', 'Regional Service commission', 'Others']
 const statuses = ['Active', 'Inactive']
 const materialsServices = [
@@ -347,7 +347,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
       <DialogContent className='w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle>
-            {mode === 'add' ? 'Add New Collection Site' : 'Update Collection Site'}
+            {mode === 'add' ? 'Add New Site' : 'Update Site'}
           </DialogTitle>
           <DialogDescription>
             {mode === 'add'

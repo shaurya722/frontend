@@ -696,10 +696,7 @@ export default function SiteManagement() {
                     <SelectItem value='all'>All</SelectItem>
                     <SelectItem value='Collection Site'>Collection Site</SelectItem>
                     <SelectItem value='Event'>Event</SelectItem>
-                    <SelectItem value='Municipal Depot'>Municipal Depot</SelectItem>
-                    <SelectItem value='Seasonal Depot'>Seasonal Depot</SelectItem>
-                    <SelectItem value='Return to Retail'>Return to Retail</SelectItem>
-                    <SelectItem value='Private Depot'>Private Depot</SelectItem>
+                   
                   </SelectContent>
                 </Select>
               </div>

@@ -104,34 +104,38 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
   )
   const [showLegendInfo, setShowLegendInfo] = useState(false)
   const [isMapLoading, setIsMapLoading] = useState(true)
-  const [mapLayers, setMapLayers] = useState<MapLayer[]>([
-    { id: 'sites', name: 'Collection Sites', visible: true, color: '#3b82f6' },
-    {
-      id: 'municipalities',
-      name: 'Municipality Boundaries',
-      visible: true,
-      color: '#10b981',
-    },
-    {
-      id: 'population',
-      name: 'Population Density',
-      visible: false,
-      color: '#f59e0b',
-    },
-  ])
+  // const [mapLayers, setMapLayers] = useState<MapLayer[]>([
+  //   { id: 'sites', name: 'Collection Sites', visible: true, color: '#3b82f6' },
+  //   {
+  //     id: 'municipalities',
+  //     name: 'Municipality Boundaries',
+  //     visible: true,
+  //     color: '#10b981',
+  //   },
+  //   {
+  //     id: 'population',
+  //     name: 'Population Density',
+  //     visible: false,
+  //     color: '#f59e0b',
+  //   },
+  // ])
 
   // Enhanced filters state
   const [mapFilters, setMapFilters] = useState({
     status: 'all',
-    program: 'all',
+    programs: [] as string[],
     municipality: 'all',
-    operatorType: 'all',
-    siteType: 'all',
-    performancePeriod: currentYear.toString(),
+    operatorTypes: [] as string[],
+    siteTypes: [] as string[],
+    performancePeriod: '2035',
     tier: 'all',
     minPopulation: '',
     maxPopulation: '',
     hasCoordinates: 'all', // 'all', 'with', 'without'
+    page: 1,
+    limit: 5,
+    municipalities_page: 1,
+    municipalities_limit: 3,
   })
 
   const [searchLocation, setSearchLocation] = useState('')
@@ -146,7 +150,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
   const { data: censusYearsData } = useCensusYears()
 
-  const { data: mapData, isLoading: isMapDataLoading, error: mapDataError } = useMapData(mapFilters.performancePeriod)
+  const { data: mapData, isLoading: isMapDataLoading, error: mapDataError } = useMapData(mapFilters)
 
   // Static fallback data
   const FALLBACK_SITES: CollectionSite[] = [
@@ -282,13 +286,13 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     handleMapReady()
   }, [])
 
-  const handleLayerToggle = (layerId: string) => {
-    setMapLayers((layers) =>
-      layers.map((layer) =>
-        layer.id === layerId ? { ...layer, visible: !layer.visible } : layer,
-      ),
-    )
-  }
+  // const handleLayerToggle = (layerId: string) => {
+  //   setMapLayers((layers) =>
+  //     layers.map((layer) =>
+  //       layer.id === layerId ? { ...layer, visible: !layer.visible } : layer,
+  //     ),
+  //   )
+  // }
 
   const handleSiteClick = (site: CollectionSite) => {
     setSelectedSite(site)
@@ -440,8 +444,8 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
       const sitePrograms = site.programs || []
       const matchesProgram =
-        mapFilters.program === 'all' ||
-        (Array.isArray(sitePrograms) && sitePrograms.includes(mapFilters.program))
+        mapFilters.programs.length === 0 ||
+        mapFilters.programs.some(p => sitePrograms.includes(p))
 
       const matchesMunicipality =
         mapFilters.municipality === 'all' ||
@@ -449,11 +453,11 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
       const operatorType = site.operator_type || ''
       const matchesOperatorType =
-        mapFilters.operatorType === 'all' ||
-        operatorType === mapFilters.operatorType
+        mapFilters.operatorTypes.length === 0 ||
+        mapFilters.operatorTypes.includes(operatorType)
 
       const matchesSiteType =
-        mapFilters.siteType === 'all' || site.site_type === mapFilters.siteType
+        mapFilters.siteTypes.length === 0 || mapFilters.siteTypes.includes(site.site_type)
 
       // Advanced filters
       const matchesTier =
@@ -491,10 +495,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         matchesCoordinates,
         filters: {
           status: mapFilters.status,
-          program: mapFilters.program,
+          programs: mapFilters.programs,
           municipality: mapFilters.municipality,
-          operatorType: mapFilters.operatorType,
-          siteType: mapFilters.siteType,
+          operatorTypes: mapFilters.operatorTypes,
+          siteTypes: mapFilters.siteTypes,
           tier: mapFilters.tier,
           hasCoordinates: mapFilters.hasCoordinates,
           siteStatus: site.status,
@@ -652,11 +656,11 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
             {/* Filters Row */}
             <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-12 gap-3 items-end'>
               {/* Layer Control */}
-              <div className='space-y-1'>
+              {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible md:hidden lg:block'>
                   Layers
                 </Label>
-                <Dialog>
+                {/* <Dialog>
                   <DialogTrigger asChild>
                     <Button variant='outline' size='sm' className='h-9 w-full'>
                       <Layers className='w-4 h-4 mr-2' />
@@ -698,9 +702,18 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                       ))}
                     </div>
                   </DialogContent>
-                </Dialog>
+                </Dialog> 
+              </div> */}
+          {/* Search */}
+              <div className='space-y-1 col-span-2'>
+                <Label className='text-xs text-muted-foreground'>Search</Label>
+                <Input
+                  placeholder='Search sites, communities, operators...'
+                  value={searchLocation}
+                  onChange={(e) => setSearchLocation(e.target.value)}
+                  className='h-9'
+                />
               </div>
-
               {/* Status Filter */}
               <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground'>Status</Label>
@@ -727,9 +740,9 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground'>Program</Label>
                 <Select
-                  value={mapFilters.program}
+                  value={mapFilters.programs[0] || 'all'}
                   onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, program: value })
+                    setMapFilters({ ...mapFilters, programs: value === 'all' ? [] : [value] })
                   }
                 >
                   <SelectTrigger className='h-9'>
@@ -780,9 +793,9 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   Operator Type
                 </Label>
                 <Select
-                  value={mapFilters.operatorType}
+                  value={mapFilters.operatorTypes[0] || 'all'}
                   onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, operatorType: value })
+                    setMapFilters({ ...mapFilters, operatorTypes: value === 'all' ? [] : [value] })
                   }
                 >
                   <SelectTrigger className='h-9'>
@@ -815,9 +828,9 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   Site Type
                 </Label>
                 <Select
-                  value={mapFilters.siteType}
+                  value={mapFilters.siteTypes[0] || 'all'}
                   onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, siteType: value })
+                    setMapFilters({ ...mapFilters, siteTypes: value === 'all' ? [] : [value] })
                   }
                 >
                   <SelectTrigger className='h-9'>
@@ -858,7 +871,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               </div>
 
               {/* Advanced Filters Toggle */}
-              <div className='space-y-1'>
+              {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible'>
                   Filters
                 </Label>
@@ -871,7 +884,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <Filter className='w-4 h-4 mr-2' />
                   Advanced
                 </Button>
-              </div>
+              </div> */}
 
               {/* Reset Button */}
               <div className='space-y-1'>
@@ -885,15 +898,19 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   onClick={() =>
                     setMapFilters({
                       status: 'all',
-                      program: 'all',
+                      programs: [],
                       municipality: 'all',
-                      operatorType: 'all',
-                      siteType: 'all',
+                      operatorTypes: [],
+                      siteTypes: [],
                       performancePeriod: currentYear.toString(),
                       tier: 'all',
                       minPopulation: '',
                       maxPopulation: '',
                       hasCoordinates: 'all',
+                      page: 1,
+                      limit: 5,
+                      municipalities_page: 1,
+                      municipalities_limit: 3,
                     })
                   }
                 >
@@ -902,19 +919,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </Button>
               </div>
 
-              {/* Search */}
-              <div className='space-y-1 col-span-2'>
-                <Label className='text-xs text-muted-foreground'>Search</Label>
-                <Input
-                  placeholder='Search sites, communities, operators...'
-                  value={searchLocation}
-                  onChange={(e) => setSearchLocation(e.target.value)}
-                  className='h-9'
-                />
-              </div>
+    
 
               {/* Export */}
-              <div className='space-y-1'>
+              {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible'>
                   Export
                 </Label>
@@ -922,7 +930,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <Download className='w-4 h-4 mr-2' />
                   Export
                 </Button>
-              </div>
+              </div> */}
             </div>
 
             {/* Advanced Filters */}
@@ -1030,7 +1038,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   municipalities={safeMunicipalities}
                   onSiteClick={handleSiteClick}
                   filters={mapFilters}
-                  layers={mapLayers}
+                  // layers={mapLayers}
                 />
               </Suspense>
 

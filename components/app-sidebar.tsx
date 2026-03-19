@@ -185,7 +185,7 @@ export function AppSidebar() {
         {
           title: "Adjacent Reallocation",
           icon: GitBranch,
-          href: "/dashboard/tool-c-reallocation",
+          href: "/dashboard/reallocation",
           visible: isAnalyst,
         },
       ],
@@ -214,6 +214,12 @@ export function AppSidebar() {
           title: "Regulatory Rules",
           icon: Scale,
           href: "/dashboard/rules",
+          visible: isAdmin,
+        },
+        {
+          title: "Census Years",
+          icon: Calendar,
+          href: "/dashboard/census-years",
           visible: isAdmin,
         },
         {

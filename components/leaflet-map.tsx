@@ -25,17 +25,29 @@ interface Municipality {
   population: number
 }
 
+interface MapFilters {
+  status: string
+  programs: string[]
+  municipality: string
+  operatorTypes: string[]
+  siteTypes: string[]
+  performancePeriod: string
+  tier: string
+  minPopulation: string
+  maxPopulation: string
+  hasCoordinates: string
+  page?: number
+  limit?: number
+  municipalities_page?: number
+  municipalities_limit?: number
+}
+
 interface LeafletMapProps {
   sites: CollectionSite[]
   municipalities: Municipality[]
   onSiteClick?: (site: CollectionSite) => void
   onMunicipalityClick?: (municipality: Municipality) => void
-  filters?: {
-    status: string
-    program: string
-    municipality: string
-    siteType: string
-  }
+  filters?: MapFilters
   layers?: {
     id: string
     name: string

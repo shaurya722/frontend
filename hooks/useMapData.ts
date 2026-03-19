@@ -34,13 +34,54 @@ interface MapDataResponse {
   census_year: CensusYear
 }
 
-export const useMapData = (performancePeriod: string) => {
+interface MapFilters {
+  status: string
+  programs: string[]
+  municipality: string
+  operatorTypes: string[]
+  siteTypes: string[]
+  performancePeriod: string
+  tier: string
+  minPopulation: string
+  maxPopulation: string
+  hasCoordinates: string
+  page?: number
+  limit?: number
+  municipalities_page?: number
+  municipalities_limit?: number
+}
+
+export const useMapData = (filters: MapFilters) => {
   return useQuery<MapDataResponse>({
-    queryKey: ['mapData', performancePeriod],
+    queryKey: ['mapData', filters],
     queryFn: async () => {
       const apiUrl = new URL('http://localhost:8000/api/community/map-data/')
-      if (performancePeriod !== 'all') {
-        apiUrl.searchParams.set('census_year', performancePeriod)
+      if (filters.performancePeriod !== 'all') {
+        apiUrl.searchParams.set('census_year', filters.performancePeriod)
+      }
+      if (filters.siteTypes.length > 0) {
+        filters.siteTypes.forEach(type => apiUrl.searchParams.append('site_types', type))
+      }
+      if (filters.status !== 'all') {
+        apiUrl.searchParams.set('status', filters.status)
+      }
+      if (filters.operatorTypes.length > 0) {
+        filters.operatorTypes.forEach(type => apiUrl.searchParams.append('operator_types', type))
+      }
+      if (filters.programs.length > 0) {
+        filters.programs.forEach(program => apiUrl.searchParams.append('programs', program))
+      }
+      if (filters.page) {
+        apiUrl.searchParams.set('page', filters.page.toString())
+      }
+      if (filters.limit) {
+        apiUrl.searchParams.set('limit', filters.limit.toString())
+      }
+      if (filters.municipalities_page) {
+        apiUrl.searchParams.set('municipalities_page', filters.municipalities_page.toString())
+      }
+      if (filters.municipalities_limit) {
+        apiUrl.searchParams.set('municipalities_limit', filters.municipalities_limit.toString())
       }
       const response = await fetch(apiUrl.toString())
       if (!response.ok) {
