@@ -73,6 +73,14 @@ export async function updateCommunityRegulatoryRule(id: string, data: Partial<Co
 }
 
 /**
+ * Create new community regulatory rule
+ */
+export async function createCommunityRegulatoryRule(data: Partial<CommunityRegulatoryRule>) {
+  const response = await axiosInstance.post<ApiResponse<CommunityRegulatoryRule>>('/api/regulatory-rules/rules/', data)
+  return response.data
+}
+
+/**
  * Delete community regulatory rule
  */
 export async function deleteCommunityRegulatoryRule(id: string) {
