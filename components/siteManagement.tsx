@@ -152,7 +152,7 @@ const buildProgramPayload = (siteData: CollectionSite) => {
 export default function SiteManagement() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [status, setStatus] = useState<string>('')
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [siteType, setSiteType] = useState<string>('')
   const [operatorType, setOperatorType] = useState<string>('')
   const [year, setYear] = useState<number | undefined>(undefined)
@@ -204,13 +204,15 @@ export default function SiteManagement() {
 
   const filters: SitesFilters = useMemo(() => ({
     search: debouncedSearch || undefined,
-    status: status || undefined,
+    // use is_active like communities-management: 'all' -> undefined, 'true'/'false' -> pass through
+    // Cast to any to align with API expectations if it accepts string values
+    is_active: selectedStatus !== 'all' ? (selectedStatus as any) : undefined,
     site_type: siteType || undefined,
     operator_type: operatorType || undefined,
     year,
     page,
     limit,
-  }), [debouncedSearch, status, siteType, operatorType, year, page])
+  }), [debouncedSearch, selectedStatus, siteType, operatorType, year, page])
 
   const { data, isLoading, error } = useSites(filters)
 
@@ -675,14 +677,14 @@ export default function SiteManagement() {
             <div className='flex gap-2'>
               <div>
                 <Label htmlFor='status'>Status</Label>
-                <Select value={status || 'all'} onValueChange={(value) => setStatus(value === 'all' ? '' : value)}>
+                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                   <SelectTrigger className='w-32'>
                     <SelectValue placeholder='All' />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Active'>Active</SelectItem>
-                    <SelectItem value='Inactive'>Inactive</SelectItem>
+                    <SelectItem value='true'>Active</SelectItem>
+                    <SelectItem value='false'>Inactive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -797,12 +799,12 @@ export default function SiteManagement() {
             </div>
             <div className='flex items-center gap-2'>
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+                {/* <DropdownMenuTrigger asChild>
                   <Button variant='outline' size='sm'>
                     <Settings2 className='w-4 h-4 mr-2' />
                     Columns
                   </Button>
-                </DropdownMenuTrigger>
+                </DropdownMenuTrigger> */}
                 <DropdownMenuContent align='end'>
                   <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
                   <DropdownMenuSeparator />

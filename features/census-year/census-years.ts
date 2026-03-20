@@ -39,7 +39,7 @@ export async function getCensusYears(params?: GetCensusYearsParams): Promise<Cen
     queryParams.set('limit', params.limit.toString())
   }
   
-  const url = `/api/community/years/${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
+  const url = `/api/community/year-data/${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
   const response = await axiosInstance.get<CensusYearsResponse>(url)
   return response.data
 }

@@ -125,19 +125,7 @@ export default function CensusYearManagement() {
 
   return (
     <div className='space-y-6'>
-      {/* Header */}
-      <div className='flex items-center justify-between'>
-        <div>
-          <h1 className='text-3xl font-bold tracking-tight'>Census Year Management</h1>
-          <p className='text-muted-foreground mt-2'>
-            Manage census years for community data tracking
-          </p>
-        </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className='w-4 h-4 mr-2' />
-          Add Census Year
-        </Button>
-      </div>
+    
 
       {/* Statistics */}
       <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
@@ -191,6 +179,12 @@ export default function CensusYearManagement() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className='w-full flex justify-end mb-2'>
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className='w-4 h-4 mr-2' />
+              Add Census Year
+            </Button>
+          </div>
           {isLoading ? (
             <div className='flex items-center justify-center py-8'>
               <Loader2 className='w-8 h-8 animate-spin text-muted-foreground' />

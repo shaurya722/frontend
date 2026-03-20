@@ -202,8 +202,8 @@ export default function LeafletMap({
             })
 
             const marker = L.marker([lat, lng], { icon: customIcon })
-              .addTo(mapInstanceRef.current)
-              .bindPopup(
+              ?.addTo(mapInstanceRef.current)
+              ?.bindPopup(
                 `
               <div style="min-width: 200px;">
                 <h3 style="font-weight: bold; margin-bottom: 8px;">${site.name}</h3>

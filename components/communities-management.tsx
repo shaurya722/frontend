@@ -727,7 +727,7 @@ export default function CommunitiesManagement() {
                 className="pl-9"
               />
             </div>
-            <Select value={tierFilter} onValueChange={setTierFilter}>
+            {/* <Select value={tierFilter} onValueChange={setTierFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Filter by tier" />
               </SelectTrigger>
@@ -737,7 +737,7 @@ export default function CommunitiesManagement() {
                 <SelectItem value="Lower">Lower Tier</SelectItem>
                 <SelectItem value="Single">Single Tier</SelectItem>
               </SelectContent>
-            </Select>
+            </Select> */}
 
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
               <SelectTrigger>

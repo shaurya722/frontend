@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { useCensusYears } from '@/hooks/useCensusYears'
 import { useMapData } from '@/hooks/useMapData'
+import { useCommunityDropdown } from '@/features/communities'
 
 // Lazy load the Leaflet map component
 const LeafletMap = lazy(() => import('./leaflet-map'))
@@ -152,112 +153,8 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
   const { data: mapData, isLoading: isMapDataLoading, error: mapDataError } = useMapData(mapFilters)
 
-  // Static fallback data
-  const FALLBACK_SITES: CollectionSite[] = [
-    {
-      id: '1',
-      name: 'Downtown Collection Center',
-      address: '123 Main St, Toronto, ON M5V 2T6',
-      status: 'Active',
-      operator_type: 'Municipal',
-      site_type: 'Collection site',
-      latitude: 43.6532,
-      longitude: -79.3832,
-      programs: ['Paint', 'Lighting', 'Solvents'],
-      municipality: { name: 'Toronto' },
-      population_served: 50000,
-      created_at: '2023-01-15',
-      active_dates: '[2023-01-01,)',
-    },
-    {
-      id: '2',
-      name: 'North York Depot',
-      address: '456 Yonge St, North York, ON M2N 5S3',
-      status: 'Active',
-      operator_type: 'Retailer',
-      site_type: 'Collection site',
-      latitude: 43.7615,
-      longitude: -79.4111,
-      programs: ['Paint', 'Pesticides'],
-      municipality: { name: 'Toronto' },
-      population_served: 35000,
-      created_at: '2023-03-20',
-      active_dates: '[2023-03-01,)',
-    },
-    {
-      id: '3',
-      name: 'Scarborough Collection Site',
-      address: '789 Kennedy Rd, Scarborough, ON M1P 2L4',
-      status: 'Scheduled',
-      operator_type: 'Private Depot',
-      site_type: 'Collection site',
-      latitude: 43.7731,
-      longitude: -79.2644,
-      programs: ['Lighting', 'Solvents'],
-      municipality: { name: 'Toronto' },
-      population_served: 28000,
-      created_at: '2024-01-10',
-      active_dates: '[2024-06-01,)',
-    },
-    {
-      id: '4',
-      name: 'Etobicoke Recycling Center',
-      address: '321 Lakeshore Blvd W, Etobicoke, ON M8V 1A1',
-      status: 'Active',
-      operator_type: 'Regional District',
-      site_type: 'Collection site',
-      latitude: 43.6205,
-      longitude: -79.4826,
-      programs: ['Paint', 'Lighting', 'Pesticides', 'Solvents'],
-      municipality: { name: 'Toronto' },
-      population_served: 42000,
-      created_at: '2022-11-05',
-      active_dates: '[2022-11-01,)',
-    },
-    {
-      id: '5',
-      name: 'Mississauga Collection Hub',
-      address: '555 Hurontario St, Mississauga, ON L5B 1N7',
-      status: 'Active',
-      operator_type: 'Distributor',
-      site_type: 'Collection site',
-      latitude: 43.5890,
-      longitude: -79.6441,
-      programs: ['Paint', 'Lighting'],
-      municipality: { name: 'Mississauga' },
-      population_served: 60000,
-      created_at: '2023-05-12',
-      active_dates: '[2023-05-01,)',
-    },
-    {
-      id: '6',
-      name: 'Brampton Waste Facility',
-      address: '888 Queen St E, Brampton, ON L6V 1C4',
-      status: 'Inactive',
-      operator_type: 'Municipal',
-      site_type: 'Collection site',
-      latitude: 43.7315,
-      longitude: -79.7624,
-      programs: ['Solvents', 'Pesticides'],
-      municipality: { name: 'Brampton' },
-      population_served: 25000,
-      created_at: '2021-08-20',
-      active_dates: '[2021-08-01,2024-01-31)',
-    },
-  ]
-
-  const FALLBACK_MUNICIPALITIES: Municipality[] = [
-    { id: '1', name: 'Toronto', tier: 'Single', population: 2930000 },
-    { id: '2', name: 'Mississauga', tier: 'Lower', population: 721599 },
-    { id: '3', name: 'Brampton', tier: 'Lower', population: 656480 },
-    { id: '4', name: 'Markham', tier: 'Lower', population: 338503 },
-    { id: '5', name: 'Vaughan', tier: 'Lower', population: 323103 },
-    { id: '6', name: 'Richmond Hill', tier: 'Lower', population: 202022 },
-  ]
-
-  // Use API data if available, otherwise fallback to static data
-  const safeSites = apiData?.sites || FALLBACK_SITES
-  const safeMunicipalities = apiData?.municipalities || FALLBACK_MUNICIPALITIES
+  // Fetch communities for the selected year
+  const { data: communitiesDropdown } = useCommunityDropdown(parseInt(mapFilters.performancePeriod) || undefined)
 
   // Fetch available years for the filter dropdown
   useEffect(() => {
@@ -406,6 +303,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     // Default: include site if we can't determine (fail open)
     return true
   }
+
+  // Safe arrays derived from API data (fallback to empty arrays if unavailable)
+  const safeSites: CollectionSite[] = apiData?.sites || []
+  const safeMunicipalities: Municipality[] = apiData?.municipalities || []
 
   // Enhanced filtering logic
   const filteredSites: CollectionSite[] = useMemo(() => {
@@ -726,12 +627,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <SelectTrigger className='h-9'>
                     <SelectValue placeholder='Status' />
                   </SelectTrigger>
-                  <SelectContent className='z-[100000]'>
+                  <SelectContent className='z-100000'>
                     <SelectItem value='all'>All</SelectItem>
                     <SelectItem value='Active'>Active</SelectItem>
-                    <SelectItem value='Scheduled'>Scheduled</SelectItem>
                     <SelectItem value='Inactive'>Inactive</SelectItem>
-                    <SelectItem value='Pending'>Pending</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -748,41 +647,13 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <SelectTrigger className='h-9'>
                     <SelectValue placeholder='Program' />
                   </SelectTrigger>
-                  <SelectContent className='z-[100000]'>
+                  <SelectContent className='z-100000'>
                     <SelectItem value='all'>All</SelectItem>
                     <SelectItem value='Paint'>Paint</SelectItem>
                     <SelectItem value='Lighting'>Lighting</SelectItem>
                     <SelectItem value='Solvents'>Solvents</SelectItem>
                     <SelectItem value='Pesticides'>Pesticides</SelectItem>
                     <SelectItem value='Fertilizers'>Fertilizers</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Community Filter */}
-              <div className='space-y-1'>
-                <Label className='text-xs text-muted-foreground'>
-                  Community
-                </Label>
-                <Select
-                  value={mapFilters.municipality}
-                  onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, municipality: value })
-                  }
-                >
-                  <SelectTrigger className='h-9'>
-                    <SelectValue placeholder='Community' />
-                  </SelectTrigger>
-                  <SelectContent className='z-[100000]'>
-                    <SelectItem value='all'>All</SelectItem>
-                    {safeMunicipalities.map((municipality) => (
-                      <SelectItem
-                        key={municipality.id}
-                        value={municipality.name}
-                      >
-                        {municipality.name}
-                      </SelectItem>
-                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -801,7 +672,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <SelectTrigger className='h-9'>
                     <SelectValue placeholder='Operator Type' />
                   </SelectTrigger>
-                  <SelectContent className='z-[100000]'>
+                  <SelectContent className='z-100000'>
                     <SelectItem value='all'>All</SelectItem>
                     <SelectItem value='Retailer'>Retailer</SelectItem>
                     <SelectItem value='Distributor'>Distributor</SelectItem>
@@ -836,10 +707,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <SelectTrigger className='h-9'>
                     <SelectValue placeholder='Site Type' />
                   </SelectTrigger>
-                  <SelectContent className='z-[100000]'>
+                  <SelectContent className='z-100000'>
                     <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Collection site'>
-                      Collection site
+                    <SelectItem value='Collection Site'>
+                      Collection Site
                     </SelectItem>
                     <SelectItem value='Event'>Event</SelectItem>
                   </SelectContent>
@@ -869,7 +740,33 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   </SelectContent>
                 </Select>
               </div>
-
+{/* Community Filter */}
+              <div className='space-y-1'>
+                <Label className='text-xs text-muted-foreground'>
+                  Community
+                </Label>
+                <Select
+                  value={mapFilters.municipality}
+                  onValueChange={(value) =>
+                    setMapFilters({ ...mapFilters, municipality: value })
+                  }
+                >
+                  <SelectTrigger className='h-9'>
+                    <SelectValue placeholder='Community' />
+                  </SelectTrigger>
+                  <SelectContent className='z-100000'>
+                    <SelectItem value='all'>All</SelectItem>
+                    {communitiesDropdown?.communities?.map((community) => (
+                      <SelectItem
+                        key={community.id}
+                        value={community.name}
+                      >
+                        {community.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               {/* Advanced Filters Toggle */}
               {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible'>
@@ -887,7 +784,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               </div> */}
 
               {/* Reset Button */}
-              <div className='space-y-1'>
+              {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible'>
                   Reset
                 </Label>
@@ -917,7 +814,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <RotateCcw className='w-4 h-4 mr-2' />
                   Reset
                 </Button>
-              </div>
+              </div> */}
 
     
 
