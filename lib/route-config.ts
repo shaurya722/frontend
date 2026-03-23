@@ -9,11 +9,12 @@ export const publicRoutes = [
 
 export const protectedRoutes = [
   // '/dashboard',
+  '/auth',
   // '/dashboard/communities',
   // '/dashboard/rules',
 ]
 
-export const defaultProtectedRoute = '/dashboard'
+export const defaultProtectedRoute = '/auth'
 export const defaultPublicRoute = '/login'
 
 export function isPublicRoute(pathname: string): boolean {

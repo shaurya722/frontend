@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, MapPin, AlertCircle } from "lucide-react"
 import { login } from "@/lib/auth"
+import { defaultProtectedRoute } from "@/lib/route-config"
 
 export default function LoginPage() {
   const [credentials, setCredentials] = useState({
@@ -36,7 +37,7 @@ export default function LoginPage() {
 
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      window.location.href = "/dashboard"
+      router.replace(defaultProtectedRoute)
     } catch (error: any) {
       console.error("[v0] Login error:", error)
       setError(error.message || "Invalid email or password. Please try again.")
