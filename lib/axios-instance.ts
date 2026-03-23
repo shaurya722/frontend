@@ -2,7 +2,7 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.3.154:8000'
 
 // Create axios instance
 export const axiosInstance = axios.create({
@@ -81,7 +81,7 @@ axiosInstance.interceptors.response.use(
           // Try to parse as JSON
           parsedData = JSON.parse(data)
         }
-        errorMessage = parsedData?.message || parsedData?.detail || `HTTP ${status} error`
+        errorMessage = parsedData?.message || parsedData?.detail || parsedData?.error || `HTTP ${status} error`
       } catch (parseError) {
         // If JSON parsing fails, it's likely an HTML error page
         console.error('❌ JSON Parse Error - likely HTML error page:', typeof data === 'string' ? data.substring(0, 200) : data)
@@ -131,6 +131,7 @@ axiosInstance.interceptors.response.use(
         message: errorMessage,
         status,
         errors: parsedData?.errors,
+        data: parsedData,
       })
     } else if (error.request) {
       // Request made but no response received

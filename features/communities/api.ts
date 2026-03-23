@@ -3,51 +3,77 @@
 import axiosInstance from '@/lib/axios-instance'
 import type {
   Community,
+  CommunityCensus,
   CommunitiesQueryParams,
-  CommunitiesRequestBody,
   PaginatedResponse,
   ApiResponse,
   CreateCommunityDto,
   UpdateCommunityDto,
+  CreateCommunityCensusDto,
+  CommunityDropdownResponse,
 } from './types'
 
 /**
  * Fetch paginated communities with filters, search, and sorting
  */
-export async function fetchCommunities(params: CommunitiesQueryParams = {}): Promise<ApiResponse<PaginatedResponse<Community>>> {
-  const { page = 1, limit = 20, search, searchFields, filters, sort, sortBy } = params
+export async function fetchCommunities(params: CommunitiesQueryParams = {}): Promise<PaginatedResponse<CommunityCensus>> {
+  const {
+    page = 1,
+    limit = 20,
+    search,
+    year,
+    tier,
+    status,
+    region,
+    min_population,
+    max_population,
+    is_active,
+    sort
+  } = params
 
   // Build query string
   const queryParams = new URLSearchParams()
   queryParams.append('page', page.toString())
   queryParams.append('limit', limit.toString())
 
-  // Build request body
-  const body: CommunitiesRequestBody = {}
-
   if (search) {
-    body.search = search
+    queryParams.append('search', search)
   }
 
-  if (searchFields && searchFields.length > 0) {
-    body.searchFields = searchFields
+  if (year) {
+    queryParams.append('year', year.toString())
   }
 
-  if (filters && Object.keys(filters).length > 0) {
-    body.filters = filters
+  if (tier) {
+    queryParams.append('tier', tier)
   }
 
-  if (sort !== undefined) {
-    body.sort = sort
+  if (status) {
+    queryParams.append('status', status)
   }
 
-  if (sortBy) {
-    body.sortBy = sortBy
+  if (region) {
+    queryParams.append('region', region)
   }
 
-  const response = await axiosInstance.post<ApiResponse<PaginatedResponse<Community>>>(
-    `/communities/?${queryParams.toString()}`,
-    body
+  if (min_population !== undefined) {
+    queryParams.append('min_population', min_population.toString())
+  }
+
+  if (max_population !== undefined) {
+    queryParams.append('max_population', max_population.toString())
+  }
+
+  if (is_active !== undefined) {
+    queryParams.append('is_active', is_active.toString())
+  }
+
+  if (sort) {
+    queryParams.append('sort', sort)
+  }
+
+  const response = await axiosInstance.get<PaginatedResponse<CommunityCensus>>(
+    `/api/community/community-census-data/?${queryParams.toString()}`
   )
 
   return response.data
@@ -56,9 +82,9 @@ export async function fetchCommunities(params: CommunitiesQueryParams = {}): Pro
 /**
  * Fetch single community by ID
  */
-export async function fetchCommunityById(id: string): Promise<Community> {
-  const response = await axiosInstance.get<ApiResponse<Community>>(`/communities/${id}/`)
-  return response.data.data
+export async function fetchCommunityById(id: string): Promise<CommunityCensus> {
+  const response = await axiosInstance.get<CommunityCensus>(`/api/community/communities/${id}/`)
+  return response.data
 }
 
 /**
@@ -70,10 +96,18 @@ export async function createCommunity(data: CreateCommunityDto) {
 }
 
 /**
+ * Create new community census data
+ */
+export async function createCommunityCensus(data: CreateCommunityCensusDto) {
+  const response = await axiosInstance.post<CommunityCensus>('/api/community/community-census-data/', data)
+  return response.data
+}
+
+/**
  * Update existing community
  */
 export async function updateCommunity(id: string, data: UpdateCommunityDto) {
-  const response = await axiosInstance.put<ApiResponse<Community>>(`/communities/${id}/`, data)
+  const response = await axiosInstance.put<CommunityCensus>(`/api/community/communities/${id}/`, data)
   return response.data
 }
 
@@ -81,7 +115,7 @@ export async function updateCommunity(id: string, data: UpdateCommunityDto) {
  * Delete community
  */
 export async function deleteCommunity(id: string) {
-  const response = await axiosInstance.delete<ApiResponse<void>>(`/communities/${id}/`)
+  const response = await axiosInstance.delete<ApiResponse<void>>(`/api/community/communities/${id}/`)
   return response.data
 }
 
@@ -92,7 +126,7 @@ export async function bulkImportCommunities(file: File) {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await axiosInstance.post<ApiResponse<any>>('/communities/bulk-import/', formData, {
+  const response = await axiosInstance.post('/api/community/community-census-data/import-export/', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -108,6 +142,44 @@ export async function exportCommunities(params: CommunitiesQueryParams = {}) {
   const response = await axiosInstance.post('/communities/export/', params, {
     responseType: 'blob',
   })
+
+  return response.data
+}
+
+/**
+ * Download community census template CSV
+ */
+export async function downloadCommunityCensusTemplate() {
+  const response = await axiosInstance.get<Blob>(
+    '/api/community/community-census-data/template/',
+    {
+      responseType: 'blob',
+    }
+  )
+
+  return response.data
+}
+
+/**
+ * Fetch available census years
+ */
+export async function fetchCensusYears(): Promise<{ years: Array<{ id: number; year: number }>; total: number }> {
+  const response = await axiosInstance.get<{ years: Array<{ id: number; year: number }>; total: number }>('/api/community/years/')
+  return response.data
+}
+
+/**
+ * Fetch communities for dropdown based on census year
+ */
+export async function fetchCommunityDropdown(year?: number): Promise<CommunityDropdownResponse> {
+  const queryParams = new URLSearchParams()
+  if (year) {
+    queryParams.append('year', year.toString())
+  }
+
+  const response = await axiosInstance.get<CommunityDropdownResponse>(
+    `/api/community/communities/dropdown/?${queryParams.toString()}`
+  )
 
   return response.data
 }

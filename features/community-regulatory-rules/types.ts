@@ -8,20 +8,21 @@ export interface CommunityRegulatoryRule extends RegulatoryRule {
   is_applicable: boolean
   calculated_sites?: number
   reason?: string
+  census_year?: number
+  year: number
 }
 
 export interface CommunityRegulatoryRulesQueryParams {
-  communityId?: string
   page?: number
   limit?: number
   search?: string
-  searchFields?: string[]
-  filters?: CommunityRegulatoryRulesFilters
-  sort?: 1 | -1
-  sortBy?: string
+  sort?: string
   program?: string
   category?: string
   rule_type?: string
+  census_year?: number
+  is_active?: boolean | string
+  year?: number
 }
 
 export interface CommunityRegulatoryRulesFilters {

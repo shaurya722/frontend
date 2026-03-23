@@ -41,9 +41,11 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react'
-import type { RegulatoryRule } from '@/lib/api/regulatory-rules'
-import { useRegulatoryRules, useCommunityRegulatoryRule, useUpdateCommunityRegulatoryRule } from '@/features/community-regulatory-rules'
+import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import type { RegulatoryRule } from '@/features/regulatory-rules'
+import { useRegulatoryRules, useRegulatoryRule, useUpdateRegulatoryRule, useDeleteRegulatoryRule, useCreateRegulatoryRule } from '@/features/regulatory-rules'
+import { useCensusYears } from '@/features/communities'
+import { PaginationControls } from '@/components/pagination-controls'
 
 interface RuleParameters {
   // Site Calculation Parameters
@@ -75,6 +77,32 @@ interface RegulatoryRulesManagementProps {
   } | null
 }
 
+const toDateInputValue = (date?: string | Date | null) => {
+  if (!date) return ''
+  const parsed = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString().split('T')[0]
+}
+
+const mapRuleToFormValues = (rule: RegulatoryRule) => ({
+  regulatory_rule: rule.regulatory_rule ?? '',
+  name: rule.name ?? '',
+  census_year: rule.year,
+  description: rule.description ?? '',
+  program: rule.program ?? 'Paint',
+  category: rule.category ?? 'HSP',
+  rule_type: rule.rule_type ?? 'Site Requirements',
+  min_population: rule.min_population ?? 0,
+  max_population: rule.max_population ?? null,
+  site_per_population: rule.site_per_population ?? null,
+  base_required_sites: rule.base_required_sites ?? null,
+  event_offset_percentage: rule.event_offset_percentage ?? null,
+  reallocation_percentage: rule.reallocation_percentage ?? null,
+  is_active: rule.is_active ?? true,
+  start_date: toDateInputValue(rule.start_date),
+  end_date: toDateInputValue(rule.end_date),
+})
+
 export default function RegulatoryRulesManagement({
   currentUser,
 }: RegulatoryRulesManagementProps) {
@@ -84,6 +112,8 @@ export default function RegulatoryRulesManagement({
   const [selectedProgram, setSelectedProgram] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedRuleType, setSelectedRuleType] = useState('all')
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
+  const [selectedCensusYear, setSelectedCensusYear] = useState<string>('all')
   
   // Pagination state
   const [page, setPage] = useState(1)
@@ -93,8 +123,28 @@ export default function RegulatoryRulesManagement({
   const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
   const [sortBy, setSortBy] = useState('created_at')
   
+  // Handle sort column clicks
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 1 ? -1 : 1)
+    } else {
+      setSortBy(field)
+      setSortOrder(-1)
+    }
+  }
+  
   // Dialog state
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
+  const [deleteRuleName, setDeleteRuleName] = useState<string>('')
+
+  // Create dialog state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+
+  // Show success/error messages temporarily
+  const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   // Debounce search input
   useEffect(() => {
@@ -107,32 +157,32 @@ export default function RegulatoryRulesManagement({
 
   // Build query params for React Query
   const queryParams = useMemo(() => {
-    const filters: any = {}
-    if (selectedProgram !== 'all') filters.program = selectedProgram
-    if (selectedCategory !== 'all') filters.category = selectedCategory
-    if (selectedRuleType !== 'all') filters.rule_type = selectedRuleType
-
     return {
       page,
       limit: pageSize,
       search: debouncedSearch || undefined,
-      searchFields: ['name', 'description'],
-      filters: Object.keys(filters).length > 0 ? filters : undefined,
-      sort: sortOrder,
-      sortBy,
+      sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
+      program: selectedProgram !== 'all' ? selectedProgram : undefined,
+      category: selectedCategory !== 'all' ? selectedCategory : undefined,
+      rule_type: selectedRuleType !== 'all' ? selectedRuleType : undefined,
+      is_active: selectedStatus !== 'all' ? selectedStatus : undefined,
+      year: selectedCensusYear !== 'all' ? parseInt(selectedCensusYear) : undefined,
     }
-  }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, sortOrder, sortBy])
+  }, [page, pageSize, debouncedSearch, selectedProgram, selectedCategory, selectedRuleType, selectedStatus, selectedCensusYear, sortOrder, sortBy])
 
   // Fetch regulatory rules using React Query
   const { data: regulatoryRulesResponse, isLoading, error, refetch } = useRegulatoryRules(queryParams)
-
+  // Fetch census years
+  const { data: censusYearsData, isLoading: isCensusYearsLoading } = useCensusYears()
   // Mutations
-  const updateMutation = useUpdateCommunityRegulatoryRule()
-  // const deleteMutation = useDeleteCommunityRegulatoryRule()
+  const updateMutation = useUpdateRegulatoryRule()
+  const deleteMutation = useDeleteRegulatoryRule()
+  const createMutation = useCreateRegulatoryRule()
 
-  // Form schemas
-  const editSchema = yup.object({
-    name: yup.string().required('Rule name is required'),
+  // Create form validation schema
+  const createSchema = yup.object({
+    regulatory_rule: yup.string().required('Rule name is required'),
+    census_year: yup.number().required('Census year is required'),
     description: yup.string().required('Description is required'),
     program: yup.string().required('Program is required'),
     category: yup.string().required('Category is required'),
@@ -144,12 +194,34 @@ export default function RegulatoryRulesManagement({
     event_offset_percentage: yup.number().nullable(),
     reallocation_percentage: yup.number().nullable(),
     is_active: yup.boolean(),
+    start_date: yup.date().required('Start date is required'),
+    end_date: yup.date().nullable(),
   }).required()
 
-  const editForm = useForm({
-    resolver: yupResolver(editSchema),
+  const editSchema = yup.object({
+    regulatory_rule: yup.string().required('Rule identifier is required'),
+    name: yup.string().required('Name is required'),
+    census_year: yup.number().required('Census year is required'),
+    description: yup.string().required('Description is required'),
+    program: yup.string().required('Program is required'),
+    category: yup.string().required('Category is required'),
+    rule_type: yup.string().required('Rule type is required'),
+    min_population: yup.number().nullable(),
+    max_population: yup.number().nullable(),
+    site_per_population: yup.number().nullable(),
+    base_required_sites: yup.number().nullable(),
+    event_offset_percentage: yup.number().nullable(),
+    reallocation_percentage: yup.number().nullable(),
+    is_active: yup.boolean(),
+    start_date: yup.date().required('Start date is required'),
+    end_date: yup.date().nullable(),
+  }).required()
+
+  const createForm = useForm({
+    resolver: yupResolver(createSchema),
     defaultValues: {
-      name: '',
+      regulatory_rule: '',
+      census_year: 2024,
       description: '',
       program: 'Paint',
       category: 'HSP',
@@ -161,31 +233,49 @@ export default function RegulatoryRulesManagement({
       event_offset_percentage: null,
       reallocation_percentage: null,
       is_active: true,
+      start_date: toDateInputValue(new Date()),
+      end_date: '',
     },
   })
 
-  // Extract data from response
-  const regulatoryRulesData = useMemo(() => {
-    if (!regulatoryRulesResponse?.data) {
-      return { docs: [], totalDocs: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false }
-    }
-    return regulatoryRulesResponse.data
-  }, [regulatoryRulesResponse])
+  const editForm = useForm({
+    resolver: yupResolver(editSchema),
+    defaultValues: {
+      regulatory_rule: '',
+      name: '',
+      census_year: 2024,
+      description: '',
+      program: 'Paint',
+      category: 'HSP',
+      rule_type: 'Site Requirements',
+      min_population: 0,
+      max_population: null,
+      site_per_population: null,
+      base_required_sites: null,
+      event_offset_percentage: null,
+      reallocation_percentage: null,
+      is_active: true,
+      start_date: toDateInputValue(new Date()),
+      end_date: '',
+    },
+  })
 
-  const rules = regulatoryRulesData.docs || []
-
-  // State for edit functionality
+  //   for edit functionality
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
 
   // Fetch single rule for editing
-  const { data: editingRuleData, isLoading: isEditingRuleLoading } = useCommunityRegulatoryRule(
+  const { data: editingRuleData, isLoading: isEditingRuleLoading } = useRegulatoryRule(
     editingRuleId || '',
     !!editingRuleId && isEditDialogOpen
   )
 
-  // Show success/error messages temporarily
-  const [successMessage, setSuccessMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+  // Set latest census year as default when data loads
+  useEffect(() => {
+    if (censusYearsData?.years && censusYearsData.years.length > 0) {
+      const latestYear = Math.max(...censusYearsData.years.map(y => y.year))
+      setSelectedCensusYear(latestYear.toString())
+    }
+  }, [censusYearsData])
 
   useEffect(() => {
     if (successMessage) {
@@ -204,26 +294,13 @@ export default function RegulatoryRulesManagement({
   // Populate edit form when rule data is loaded
   useEffect(() => {
     if (editingRuleData && isEditDialogOpen) {
-      const rule = editingRuleData
-      editForm.reset({
-        name: rule.name,
-        description: rule.description,
-        program: rule.program,
-        category: rule.category,
-        rule_type: rule.rule_type,
-        min_population: rule.min_population || 0,
-        max_population: rule.max_population || null,
-        site_per_population: rule.site_per_population || null,
-        base_required_sites: rule.base_required_sites || null,
-        event_offset_percentage: rule.event_offset_percentage || null,
-        reallocation_percentage: rule.reallocation_percentage || null,
-        is_active: rule.status === 'Active',
-      })
+      editForm.reset(mapRuleToFormValues(editingRuleData))
     }
   }, [editingRuleData, isEditDialogOpen, editForm])
 
-  const handleEditRule = (ruleId: string) => {
-    setEditingRuleId(ruleId)
+  const handleEditRule = (rule: RegulatoryRule) => {
+    setEditingRuleId(rule.id.toString())
+    editForm.reset(mapRuleToFormValues(rule))
     setIsEditDialogOpen(true)
   }
 
@@ -231,56 +308,91 @@ export default function RegulatoryRulesManagement({
     if (!editingRuleId) return
 
     try {
-      // Map form data to API format
-      const updateData: any = {
+      // Format data to match API structure
+      const updateData = {
+        regulatory_rule: data.regulatory_rule,
         name: data.name,
+        census_year: data.census_year,
         description: data.description,
         program: data.program,
         category: data.category,
         rule_type: data.rule_type,
+        min_population: data.min_population,
+        max_population: data.max_population,
+        site_per_population: data.site_per_population,
+        base_required_sites: data.base_required_sites,
+        reallocation_percentage: data.reallocation_percentage,
+        event_offset_percentage: data.event_offset_percentage,
+        is_active: data.is_active,
+        start_date: data.start_date ? new Date(data.start_date).toISOString().split('T')[0] : null,
+        end_date: data.end_date ? new Date(data.end_date).toISOString().split('T')[0] : null,
       }
-
-      // Add rule-specific parameters based on rule type
-      if (data.rule_type === 'Site Requirements') {
-        updateData.min_population = data.min_population
-        updateData.max_population = data.max_population
-        updateData.site_per_population = data.site_per_population
-        updateData.base_required_sites = data.base_required_sites
-      } else if (data.rule_type === 'Events') {
-        updateData.event_offset_percentage = data.event_offset_percentage
-      } else if (data.rule_type === 'Reallocation') {
-        updateData.reallocation_percentage = data.reallocation_percentage
-      }
-
-      // Add status
-      updateData.is_active = data.is_active
 
       await updateMutation.mutateAsync({
-        id: editingRuleId,
+        id: editingRuleId.toString(),
         data: updateData,
       })
 
       setEditingRuleId(null)
       setIsEditDialogOpen(false)
       editForm.reset()
-      setSuccessMessage(`Regulatory rule "${data.name}" updated successfully`)
+      setSuccessMessage(`Regulatory rule "${data.name || data.regulatory_rule}" updated successfully`)
     } catch (error: any) {
       setErrorMessage(error.message || 'Failed to update regulatory rule')
     }
   }
 
-  // const handleDeleteRule = async (ruleId: string) => {
-  //   if (!confirm('Are you sure you want to delete this rule?')) return
+  const handleCreateRule = async (data: any) => {
+    try {
+      const createData = {
+        regulatory_rule: data.regulatory_rule,
+        name: data.regulatory_rule,
+        census_year: data.census_year,
+        program: data.program,
+        category: data.category,
+        rule_type: data.rule_type,
+        description: data.description,
+        min_population: data.min_population,
+        max_population: data.max_population,
+        site_per_population: data.site_per_population,
+        base_required_sites: data.base_required_sites,
+        event_offset_percentage: data.event_offset_percentage,
+        reallocation_percentage: data.reallocation_percentage,
+        is_active: data.is_active,
+        start_date: data.start_date ? new Date(data.start_date).toISOString().split('T')[0] : null,
+        end_date: data.end_date ? new Date(data.end_date).toISOString().split('T')[0] : null,
+      }
 
-  //   try {
-  //     await deleteRegulatoryRule(ruleId)
+      await createMutation.mutateAsync(createData)
 
-  //     setRules(rules.filter((r) => r.id !== ruleId))
-  //   } catch (error) {
-  //     console.error('[v0] Error deleting rule:', error)
-  //     alert('Failed to delete rule. Please try again.')
-  //   }
-  // }
+      setIsCreateDialogOpen(false)
+      createForm.reset()
+      refetch()
+      setSuccessMessage(`Regulatory rule "${data.regulatory_rule}" created successfully`)
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Failed to create regulatory rule')
+    }
+  }
+
+  const handleDeleteRule = (ruleId: string, ruleName: string) => {
+    setDeleteRuleId(ruleId)
+    setDeleteRuleName(ruleName)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteRuleId) return
+
+    try {
+      await deleteMutation.mutateAsync(deleteRuleId)
+      setSuccessMessage(`Regulatory rule "${deleteRuleName}" deleted successfully`)
+      setIsDeleteDialogOpen(false)
+      setDeleteRuleId(null)
+      setDeleteRuleName('')
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Failed to delete regulatory rule')
+    }
+  }
 
   const handleEditCommunity = editForm.handleSubmit(handleSaveRule)
 
@@ -375,12 +487,44 @@ export default function RegulatoryRulesManagement({
     }
   }
 
+  // Since API returns object with results array, extract the rules array
+  const rawRules = regulatoryRulesResponse?.results || []
+  const totalRules = typeof regulatoryRulesResponse?.count === 'number'
+    ? regulatoryRulesResponse!.count
+    : rawRules.length
+  const hasNextPage = typeof regulatoryRulesResponse?.next === 'string'
+    ? Boolean(regulatoryRulesResponse?.next)
+    : false
+  const hasPrevPage = typeof regulatoryRulesResponse?.previous === 'string'
+    ? Boolean(regulatoryRulesResponse?.previous)
+    : false
+
+  // Apply client-side sorting
+  const rules = useMemo(() => {
+    if (!Array.isArray(rawRules)) return []
+
+    return [...rawRules].sort((a, b) => {
+      let aValue: any = a[sortBy as keyof typeof a]
+      let bValue: any = b[sortBy as keyof typeof b]
+
+      // Handle string comparison (case insensitive)
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = bValue.toLowerCase()
+      }
+
+      if (aValue < bValue) return sortOrder === 1 ? -1 : 1
+      if (aValue > bValue) return sortOrder === 1 ? 1 : -1
+      return 0
+    })
+  }, [rawRules, sortBy, sortOrder])
+
   const ruleStats = {
-    total: regulatoryRulesData.totalDocs || 0,
-    active: rules.filter((r) => r.status === 'Active').length,
-    siteCalculation: rules.filter((r) => r.rule_type === 'Site Requirements').length,
-    offsetRules: rules.filter((r) => r.rule_type === 'Events' || r.rule_type === 'Reallocation').length,
-    programs: new Set(rules.map((r) => r.program)).size,
+    total: Array.isArray(rules) ? rules.length : 0,
+    active: Array.isArray(rules) ? rules.filter((r) => r.is_active).length : 0,
+    siteCalculation: Array.isArray(rules) ? rules.filter((r) => r.rule_type === 'Site Requirements').length : 0,
+    offsetRules: Array.isArray(rules) ? rules.filter((r) => r.rule_type === 'Events' || r.rule_type === 'Reallocation').length : 0,
+    programs: Array.isArray(rules) ? new Set(rules.map((r) => r.program)).size : 0,
   }
 
   return (
@@ -398,7 +542,7 @@ export default function RegulatoryRulesManagement({
       )}
 
       {/* Header with Stats */}
-      <div className='grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
+      {/* <div className='grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
         <Card>
           <CardHeader className='pb-3'>
             <CardTitle className='text-sm font-medium text-muted-foreground'>
@@ -455,14 +599,14 @@ export default function RegulatoryRulesManagement({
             <div className='text-2xl font-bold'>{ruleStats.programs}</div>
           </CardContent>
         </Card>
-      </div>
+      </div> */}
 
       {/* Main Rules Table */}
       <Card>
         
         <CardContent>
           {/* Search and Filters */}
-          <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 pt-3'>
+          <div className='grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 mb-6 pt-3'>
             <div className='relative'>
               <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input
@@ -513,176 +657,197 @@ export default function RegulatoryRulesManagement({
                 <SelectItem value='Reallocation'>Reallocation</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="true">Active</SelectItem>
+                <SelectItem value="false">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedCensusYear} onValueChange={setSelectedCensusYear}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by census year" />
+              </SelectTrigger>
+              <SelectContent>
+                {censusYearsData?.years?.map((year) => (
+                  <SelectItem key={year.id} value={year.year.toString()}>
+                    {year.year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button 
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="bg-black hover:bg-black/80"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create Rule
+            </Button>
           </div>
 
           {/* Rules Table */}
-          {isLoading ? (
-            <div className='text-center py-8 text-muted-foreground'>
-              Loading regulatory rules...
-            </div>
-          ) : rules.length === 0 ? (
-            <div className='text-center py-8 text-muted-foreground'>
-              No rules found matching the current filters
-            </div>
-          ) : (
-            <div className='border rounded-lg'>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
-                      <Button variant="ghost" size="sm" onClick={() => setSortBy('name')}>
-                        Name
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead>Program</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Parameters</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className='text-right'>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell>
-                        <div>
-                          <div className='font-medium whitespace-nowrap'>
-                            {rule.name}
-                          </div>
-                          <div className='text-sm text-muted-foreground'>
-                            {rule.description}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant='outline'>{rule.program}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant='secondary'>{rule.category}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={getRuleTypeBadgeColor(rule.rule_type)}
-                        >
-                          {rule.rule_type.replace(/_/g, ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className='max-w-md whitespace-nowrap'>
-                        {renderRuleParameters(rule)}
-                      </TableCell>
-                      <TableCell>
-                        {rule.status === 'Active' ? (
-                          <Badge className='bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'>
-                            <CheckCircle className='h-3 w-3 mr-1' />
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge variant='secondary'>Inactive</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        <div className='flex justify-end gap-2'>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            onClick={() => handleEditRule(rule.id)}
-                          >
-                            <Edit className='h-4 w-4' />
-                          </Button>
-                        
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-
-          {/* Pagination */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="text-sm text-gray-600">
-                Showing {rules.length} of {regulatoryRulesData.totalDocs} regulatory rules
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Show:</span>
-                <Select value={pageSize.toString()} onValueChange={(value) => setPageSize(parseInt(value))}>
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-gray-600">per page</span>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page - 1)}
-                  disabled={!regulatoryRulesData.hasPrevPage || isLoading}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-
-                {/* Page Numbers */}
-                <div className="flex items-center gap-1">
-                  {(() => {
-                    const totalPages = regulatoryRulesData.totalPages || 1
-                    const currentPage = page
-                    const maxVisiblePages = 5
-                    const halfVisible = Math.floor(maxVisiblePages / 2)
-
-                    let startPage = Math.max(1, currentPage - halfVisible)
-                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
-
-                    // Adjust start page if we're near the end
-                    if (endPage - startPage + 1 < maxVisiblePages) {
-                      startPage = Math.max(1, endPage - maxVisiblePages + 1)
-                    }
-
-                    const pages = []
-                    for (let i = startPage; i <= endPage; i++) {
-                      pages.push(
-                        <Button
-                          key={i}
-                          variant={i === currentPage ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setPage(i)}
-                          disabled={isLoading}
-                          className="w-8 h-8 p-0"
-                        >
-                          {i}
-                        </Button>
-                      )
-                    }
-
-                    return pages
-                  })()}
+          <div className='border rounded-lg relative'>
+            {isLoading && (
+              <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 flex items-center justify-center z-10 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                  Loading regulatory rules...
                 </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page + 1)}
-                  disabled={!regulatoryRulesData.hasNextPage || isLoading}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
               </div>
-            </div>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Name
+                      {sortBy === 'name' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('program')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Program
+                      {sortBy === 'program' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('category')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Category
+                      {sortBy === 'category' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" onClick={() => handleSort('rule_type')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      Type
+                      {sortBy === 'rule_type' ? (
+                        sortOrder === 1 ? 
+                          <ChevronUp className="ml-2 h-4 w-4" /> : 
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      )}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                      Census Year
+                  </TableHead>
+                  <TableHead>Parameters</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className='text-right'>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.isArray(rules) && rules.length > 0 ? rules.map((rule) => (
+                  <TableRow key={rule.id}>
+                    <TableCell>
+                      <div>
+                        <div className='font-medium whitespace-nowrap'>
+                          {rule.name}
+                        </div>
+                        <div className='text-sm text-muted-foreground'>
+                          {rule.description}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant='outline'>{rule.program}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant='secondary'>{rule.category}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={getRuleTypeBadgeColor(rule.rule_type)}
+                      >
+                        {rule.rule_type.replace(/_/g, ' ')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                   {rule.year}
+                    </TableCell>
+                    <TableCell className='max-w-md whitespace-nowrap'>
+                      {renderRuleParameters(rule)}
+                    </TableCell>
+                    <TableCell>
+                      {rule.is_active === true ? (
+                        <Badge className='bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'>
+                          <CheckCircle className='h-3 w-3 mr-1' />
+                          Active
+                        </Badge>
+                      ) : (
+                        <Badge variant='secondary'>Inactive</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className='text-right'>
+                      <div className='flex justify-end gap-2'>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => handleEditRule(rule)}
+                          disabled={isLoading}
+                        >
+                          <Edit className='h-4 w-4' />
+                        </Button>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => handleDeleteRule(rule.id.toString(), rule.name)}
+                          className='text-red-600 hover:text-red-700 hover:bg-red-50'
+                          disabled={isLoading}
+                        >
+                          <Trash2 className='h-4 w-4' />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )) : !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      No rules found matching the current filters
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
+
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            totalCount={totalRules}
+            currentCount={rules.length}
+            onPageChange={(newPage) => setPage(newPage)}
+            isLoading={isLoading}
+            hasNext={hasNextPage}
+            hasPrev={hasPrevPage}
+            label="regulatory rules"
+            pageSizeOptions={[10, 20, 50, 100]}
+            onPageSizeChange={(value) => {
+              setPageSize(value)
+              setPage(1)
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -816,53 +981,96 @@ export default function RegulatoryRulesManagement({
               <div className='grid grid-cols-2 gap-4'>
                 <div className='space-y-2'>
                   <Label htmlFor='edit-category'>Category</Label>
-                  <Controller
-                    name="category"
-                    control={editForm.control}
-                    render={({ field }: any) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value='HSP'>
-                            HSP (Hazardous & Special Products)
-                          </SelectItem>
-                          <SelectItem value='EEE'>
-                            EEE (Electrical & Electronic Equipment)
-                          </SelectItem>
-                          <SelectItem value='Offset'>Offset</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
+                  <Select
+                    key={editForm.watch('category')}
+                    value={editForm.watch('category')}
+                    onValueChange={(value) => editForm.setValue('category', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {editForm.watch('category') === 'HSP' ? 'HSP (Hazardous & Special Products)' :
+                         editForm.watch('category') === 'EEE' ? 'EEE (Electrical & Electronic Equipment)' :
+                         editForm.watch('category') === 'Offset' ? 'Offset' : 'Select Category'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='HSP'>
+                        HSP (Hazardous & Special Products)
+                      </SelectItem>
+                      <SelectItem value='EEE'>
+                        EEE (Electrical & Electronic Equipment)
+                      </SelectItem>
+                      <SelectItem value='Offset'>Offset</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className='space-y-2'>
                   <Label htmlFor='edit-rule-type'>Rule Type</Label>
-                  <Controller
-                    name="rule_type"
-                    control={editForm.control}
-                    render={({ field }: any) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value='Site Requirements'>
-                            Site Requirements
-                          </SelectItem>
-                          <SelectItem value='Events'>Events</SelectItem>
-                          <SelectItem value='Reallocation'>Reallocation</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
+                  <Select
+                    key={editForm.watch('rule_type')}
+                    value={editForm.watch('rule_type')}
+                    onValueChange={(value) => editForm.setValue('rule_type', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {editForm.watch('rule_type') === 'Site Requirements' ? 'Site Requirements' :
+                         editForm.watch('rule_type') === 'Events' ? 'Events' :
+                         editForm.watch('rule_type') === 'Reallocation' ? 'Reallocation' : 'Select Rule Type'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='Site Requirements'>
+                        Site Requirements
+                      </SelectItem>
+                      <SelectItem value='Events'>Events</SelectItem>
+                      <SelectItem value='Reallocation'>Reallocation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
+                <div className='space-y-2'>
+                  <Label htmlFor='edit-census-year'>Census Year *</Label>
+                  <Select
+                    value={editForm.watch('census_year')?.toString()}
+                    onValueChange={(value) => editForm.setValue('census_year', parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select census year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {censusYearsData?.years?.map((year) => (
+                        <SelectItem key={year.id} value={year.year.toString()}>
+                          {year.year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className='space-y-2'>
+                  <Label htmlFor='edit-start-date'>Start Date *</Label>
+                  <Input
+                    id='edit-start-date'
+                    type='date'
+                    {...editForm.register('start_date')}
+                    className={editForm.formState.errors.start_date ? 'border-red-500' : ''}
                   />
+                  {editForm.formState.errors.start_date && (
+                    <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.start_date.message}</p>
+                  )}
+                </div>
+                <div className='space-y-2'>
+                  <Label htmlFor='edit-end-date'>End Date</Label>
+                  <Input
+                    id='edit-end-date'
+                    type='date'
+                    {...editForm.register('end_date')}
+                    className={editForm.formState.errors.end_date ? 'border-red-500' : ''}
+                  />
+                  {editForm.formState.errors.end_date && (
+                    <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.end_date.message}</p>
+                  )}
                 </div>
               </div>
 
@@ -972,6 +1180,264 @@ export default function RegulatoryRulesManagement({
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Rule Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+        setIsCreateDialogOpen(open)
+        if (!open) {
+          createForm.reset()
+        }
+      }}>
+        <DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle>Create Regulatory Rule</DialogTitle>
+            <DialogDescription>
+              Create a new regulatory rule with all required parameters
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={createForm.handleSubmit(handleCreateRule)} className="space-y-4">
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+              <div className='space-y-2'>
+                <Label htmlFor='create-regulatory-rule'>Regulatory Rule *</Label>
+                <Input
+                  id='create-regulatory-rule'
+                  {...createForm.register('regulatory_rule')}
+                  className={createForm.formState.errors.regulatory_rule ? 'border-red-500' : ''}
+                />
+                {createForm.formState.errors.regulatory_rule && (
+                  <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.regulatory_rule.message}</p>
+                )}
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='create-program'>Program *</Label>
+                <Controller
+                  name="program"
+                  control={createForm.control}
+                  render={({ field }: any) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='Paint'>Paint</SelectItem>
+                        <SelectItem value='Solvents'>Solvents</SelectItem>
+                        <SelectItem value='Pesticides'>Pesticides</SelectItem>
+                        <SelectItem value='Lighting'>Lighting</SelectItem>
+                        <SelectItem value='All'>All</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+              <div className='space-y-2'>
+                <Label htmlFor='create-category'>Category *</Label>
+                <Select
+                  key={createForm.watch('category')}
+                  value={createForm.watch('category')}
+                  onValueChange={(value) => createForm.setValue('category', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      {createForm.watch('category') === 'HSP' ? 'HSP (Hazardous & Special Products)' :
+                       createForm.watch('category') === 'EEE' ? 'EEE (Electrical & Electronic Equipment)' :
+                       createForm.watch('category') === 'Offset' ? 'Offset' : 'Select Category'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='HSP'>
+                      HSP (Hazardous & Special Products)
+                    </SelectItem>
+                    <SelectItem value='EEE'>
+                      EEE (Electrical & Electronic Equipment)
+                    </SelectItem>
+                    <SelectItem value='Offset'>Offset</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='create-rule-type'>Rule Type *</Label>
+                <Select
+                  key={createForm.watch('rule_type')}
+                  value={createForm.watch('rule_type')}
+                  onValueChange={(value) => createForm.setValue('rule_type', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      {createForm.watch('rule_type') === 'Site Requirements' ? 'Site Requirements' :
+                       createForm.watch('rule_type') === 'Events' ? 'Events' :
+                       createForm.watch('rule_type') === 'Reallocation' ? 'Reallocation' : 'Select Rule Type'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='Site Requirements'>
+                      Site Requirements
+                    </SelectItem>
+                    <SelectItem value='Events'>Events</SelectItem>
+                    <SelectItem value='Reallocation'>Reallocation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
+              <div className='space-y-2'>
+                <Label htmlFor='create-census-year'>Census Year *</Label>
+                <Select
+                  value={createForm.watch('census_year')?.toString()}
+                  onValueChange={(value) => createForm.setValue('census_year', parseInt(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select census year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {censusYearsData?.years?.map((year) => (
+                      <SelectItem key={year.id} value={year.year.toString()}>
+                        {year.year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='create-start-date'>Start Date *</Label>
+                <Input
+                  id='create-start-date'
+                  type='date'
+                  {...createForm.register('start_date')}
+                  className={createForm.formState.errors.start_date ? 'border-red-500' : ''}
+                />
+                {createForm.formState.errors.start_date && (
+                  <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.start_date.message}</p>
+                )}
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='create-end-date'>End Date</Label>
+                <Input
+                  id='create-end-date'
+                  type='date'
+                  {...createForm.register('end_date')}
+                  className={createForm.formState.errors.end_date ? 'border-red-500' : ''}
+                />
+                {createForm.formState.errors.end_date && (
+                  <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.end_date.message}</p>
+                )}
+              </div>
+            </div>
+
+            <div className='space-y-2'>
+              <Label htmlFor='create-description'>Description *</Label>
+              <Textarea
+                id='create-description'
+                {...createForm.register('description')}
+                rows={2}
+                className={createForm.formState.errors.description ? 'border-red-500' : ''}
+              />
+              {createForm.formState.errors.description && (
+                <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.description.message}</p>
+              )}
+            </div>
+
+            {/* Dynamic parameter fields based on rule type */}
+            <div className='space-y-4 border-t pt-4'>
+              <h4 className='font-semibold'>Rule Parameters</h4>
+
+              {createForm.watch('rule_type') === 'Site Requirements' && (
+                <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+                  <div className='space-y-2'>
+                    <Label>Minimum Population</Label>
+                    <Input
+                      type='number'
+                      {...createForm.register('min_population')}
+                    />
+                  </div>
+                  <div className='space-y-2'>
+                    <Label>
+                      Maximum Population (leave empty for unlimited)
+                    </Label>
+                    <Input
+                      type='number'
+                      {...createForm.register('max_population')}
+                      placeholder='Unlimited'
+                    />
+                  </div>
+                  <div className='space-y-2'>
+                    <Label>Sites Per Population</Label>
+                    <Input
+                      type='number'
+                      step="0.01"
+                      {...createForm.register('site_per_population')}
+                    />
+                  </div>
+                  <div className='space-y-2'>
+                    <Label>Base Requirement</Label>
+                    <Input
+                      type='number'
+                      {...createForm.register('base_required_sites')}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {createForm.watch('rule_type') === 'Events' && (
+                <div className='space-y-4'>
+                  <div className='space-y-2'>
+                    <Label>Maximum Offset Percentage</Label>
+                    <Input
+                      type='number'
+                      min='0'
+                      max='100'
+                      {...createForm.register('event_offset_percentage')}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {createForm.watch('rule_type') === 'Reallocation' && (
+                <div className='space-y-4'>
+                  <div className='space-y-2'>
+                    <Label>Maximum Offset Percentage</Label>
+                    <Input
+                      type='number'
+                      min='0'
+                      max='100'
+                      {...createForm.register('reallocation_percentage')}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className='flex items-center space-x-2'>
+              <input
+                type="checkbox"
+                id='create-active'
+                {...createForm.register('is_active')}
+                className="rounded border-gray-300"
+              />
+              <Label htmlFor='create-active'>Rule is active</Label>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => {
+                setIsCreateDialogOpen(false)
+                createForm.reset()
+              }}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Creating...' : 'Create Rule'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

@@ -9,7 +9,7 @@ import {
   deleteCommunityRegulatoryRule,
   applyRegulatoryRulesToCommunity,
   bulkImportCommunityRegulatoryRules,
-  exportCommunityRegulatoryRules,
+  deleteRegulatoryRule,
 } from './api'
 import type {
   CommunityRegulatoryRulesQueryParams,
@@ -26,7 +26,7 @@ export function useRegulatoryRules(params: CommunityRegulatoryRulesQueryParams =
   return useQuery({
     queryKey: [COMMUNITY_REGULATORY_RULES_QUERY_KEY, params],
     queryFn: () => fetchCommunityRegulatoryRules(params),
-    staleTime: 30000, // 30 seconds
+    staleTime: 0, // Disable caching for debugging
   })
 }
 
@@ -120,10 +120,16 @@ export function useBulkImportCommunityRegulatoryRules() {
 }
 
 /**
- * Hook to export community regulatory rules
+ * Hook to delete a community
  */
-export function useExportCommunityRegulatoryRules() {
+export function useDeleteRegulatoryRule() {
+  const queryClient = useQueryClient()
+
   return useMutation({
-    mutationFn: (params: CommunityRegulatoryRulesQueryParams) => exportCommunityRegulatoryRules(params),
+    mutationFn: (ruleId: string) => deleteRegulatoryRule(ruleId),
+    onSuccess: () => {
+      // Invalidate regulatory rules list
+      queryClient.invalidateQueries({ queryKey: [COMMUNITY_REGULATORY_RULES_QUERY_KEY] })
+    },
   })
 }

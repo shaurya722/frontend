@@ -51,6 +51,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { number } from "yup"
 
 interface UserData {
   id: number
@@ -62,7 +63,12 @@ interface UserData {
 export function AppSidebar() {
   const router = useRouter()
   const pathname = usePathname()
-  const [user, setUser] = useState<UserData | null>(null)
+  const [user, setUser] = useState<UserData | null>({
+    id: 1,
+    email: "test@example.com",
+    first_name: "John",
+    last_name: "Doe",
+  })
   const [showLogoutDialog, setShowLogoutDialog] = useState(false)
 
   useEffect(() => {
@@ -173,13 +179,13 @@ export function AppSidebar() {
         {
           title: "Event Application",
           icon: Calendar,
-          href: "/dashboard/tool-b-events",
+          href: "/dashboard/events",
           visible: isAnalyst,
         },
         {
           title: "Adjacent Reallocation",
           icon: GitBranch,
-          href: "/dashboard/tool-c-reallocation",
+          href: "/dashboard/reallocation",
           visible: isAnalyst,
         },
       ],
@@ -208,6 +214,12 @@ export function AppSidebar() {
           title: "Regulatory Rules",
           icon: Scale,
           href: "/dashboard/rules",
+          visible: isAdmin,
+        },
+        {
+          title: "Census Years",
+          icon: Calendar,
+          href: "/dashboard/census-years",
           visible: isAdmin,
         },
         {

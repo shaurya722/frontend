@@ -1,178 +1,114 @@
-# ArcGIS Compliance Tool New
-
-Ontario HSP & EEE Collection Site Assessment System
-
-## Overview
-
-The ArcGIS Compliance Tool is a comprehensive web application designed to help Ontario municipalities and organizations track compliance with Hazardous and Special Products (HSP) and Electrical and Electronic Equipment (EEE) collection site requirements.
-
-## Features
-
-### Core Functionality
-- **Interactive Map View**: Visualize collection sites and municipal boundaries
-- **Site Management**: Add, edit, and track collection sites across Ontario
-- **Compliance Analysis**: Real-time compliance calculations and reporting
-- **Reallocation Tools**: Manage site reallocations between municipalities
-- **Direct Service Offset**: Track direct service to generators
-- **Reports & Export**: Generate comprehensive compliance reports
-
-### User Roles
-- **Administrator**: Full system access, user management, regulatory rules
-- **Compliance Analyst**: Site management, compliance analysis, reallocations
-- **Viewer**: Read-only access to maps and reports
-
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
-- Supabase account (for production database)
-- Modern web browser
+- Node.js 18+
+- Reactjs ^19
+- typescript ^5
+- npm or pnpm package manager
+- Modern web browser with JavaScript enabled
+- API backend running (separate service)
 
 ### Installation
 
-1. **Clone or download the project**
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd arcgisn-ov2025/frontend
+   ```
 
-2. **Install dependencies** (handled automatically by v0)
+2. **Install dependencies**
+   ```bash
+   npm install
+   # or
+   pnpm install
+   ```
 
 3. **Configure environment variables**
-   The following environment variables are already configured in your v0 workspace:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `POSTGRES_*` variables for database access
+   
+   Copy `.env.example` to `.env.local` and configure:
+   ```env
+   NEXT_PUBLIC_API_URL=http://localhost:8000/api
+   # Add other required environment variables
+   ```
 
-4. **Database Setup**
-   The database is already set up with:
-   - ✅ 5 demo users (admin, analyst, viewer, etc.)
-   - ✅ 10 municipalities across Ontario
-   - ✅ 10 collection sites with realistic data
-   - ✅ Row Level Security (RLS) policies enabled
+4. **Start the development server**
+   ```bash
+   npm run dev
+   # or
+   pnpm dev
+   ```
 
-### Demo Credentials
-
-| Role | Username | Password |
-|------|----------|----------|
-| Administrator | admin | admin123 |
-| Compliance Analyst | analyst | analyst123 |
-| Viewer | viewer | viewer123 |
-
-## Usage
-
-### Login
-1. Navigate to the login page
-2. Use one of the demo credentials above
-3. You'll be redirected to the dashboard upon successful login
-
-### Dashboard Overview
-The dashboard provides:
-- Total sites count
-- Compliance rate percentage
-- Shortfalls (sites needed for compliance)
-- Excesses (sites available for reallocation)
-
-### Managing Sites (Analyst/Admin)
-1. Go to the "Site Management" tab
-2. Click "Add New Site" to create a collection site
-3. Fill in required information: name, address, municipality, programs
-4. Sites can be edited or deleted as needed
-
-### Compliance Analysis
-1. Navigate to the "Compliance Analysis" tab
-2. View compliance status by municipality
-3. See detailed calculations for each program (Paint, Solvents, etc.)
-4. Identify municipalities with shortfalls or excesses
-
-### Reallocations (Analyst/Admin)
-1. Go to the "Reallocation" tab
-2. Create reallocations to address compliance shortfalls
-3. Submit for approval
-4. Track reallocation status
-
-### Generating Reports
-1. Navigate to the "Reports" tab
-2. Select report type (Compliance Summary, Site Inventory, etc.)
-3. Choose format (PDF, Excel, CSV)
-4. Download or print the report
+5. **Open your browser**
+   
+   Navigate to `http://localhost:3000` to view the application.
 
 ## Technical Architecture
 
 ### Frontend
 - **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
 - **UI Library**: React 18
-- **Styling**: Tailwind CSS v4
+- **Styling**: Tailwind CSS
 - **Components**: shadcn/ui
-- **Maps**: Leaflet (OpenStreetMap)
+- **State Management**: React Query (TanStack Query)
+- **Maps**: Leaflet with OpenStreetMap
+- **Forms**: React Hook Form
+- **Icons**: Lucide React
 
-### Backend
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth + Custom Auth
-- **API**: Next.js Server Actions & Route Handlers
-
-### Database Schema
-- `users` - User accounts and roles
-- `municipalities` - Ontario municipalities
-- `collection_sites` - HSP/EEE collection locations
-- `compliance_calculations` - Compliance tracking
-- `reallocations` - Site reallocation records
-- `audit_logs` - System audit trail
-
-## Development
+### Key Libraries
+- **React Query**: Data fetching and caching
+- **Leaflet**: Interactive maps
+- **React Hook Form**: Form handling
+- **shadcn/ui**: Modern UI components
+- **Tailwind CSS**: Utility-first styling
+- **Lucide React**: Icon library
 
 ### Project Structure
-\`\`\`
-├── app/                    # Next.js app directory
-│   ├── dashboard/         # Main dashboard page
-│   ├── login/            # Authentication
-│   └── globals.css       # Global styles
+```
+├── app/                    # Next.js App Router directory
+│   ├── dashboard/         # Dashboard page with compliance overview
+│   ├── login/            # Authentication page
+│   ├── globals.css       # Global styles and Tailwind CSS
+│   ├── layout.tsx        # Root layout component
+│   └── page.tsx          # Landing page
 ├── components/            # React components
 │   ├── ui/               # shadcn/ui components
-│   ├── map-view.tsx      # Interactive map
-│   ├── site-management.tsx
-│   └── ...
-├── lib/                   # Utility libraries
-│   ├── supabase.ts       # Database client
-│   ├── auth.ts           # Authentication logic
-│   ├── sites.ts          # Site management
-│   └── compliance.ts     # Compliance calculations
-└── scripts/               # Database scripts
-    ├── 01-create-tables.sql
-    ├── 02-seed-data.sql
-    └── 03-create-policies.sql
-\`\`\`
+│   ├── dashboard-layout.tsx  # Main layout wrapper
+│   ├── leaflet-map.tsx   # Interactive Leaflet map component
+│   ├── mapView.tsx       # Map view with filters and data
+│   ├── siteManagement.tsx # Site management interface
+│   ├── communities-management.tsx # Communities management
+│   └── site-form-dialog.tsx # Site creation/editing form
+├── features/             # Feature-based architecture
+│   ├── sites/           # Site management logic and hooks
+│   ├── communities/     # Communities management logic
+│   ├── compliance/      # Compliance calculation logic
+│   ├── census-year/     # Census year management
+│   └── regions/         # Regional data management
+├── hooks/               # Custom React hooks
+├── lib/                 # Utility libraries and configurations
+├── providers/           # React context providers
+└── types/               # TypeScript type definitions
+```
 
 ### Running in Development
-The application runs automatically in the v0 preview environment. Any changes to files will hot-reload instantly.
+The application uses Next.js development server with hot reloading:
+```bash
+npm run dev
+# or
+pnpm dev
+```
 
-### Debugging
-Debug logs are prefixed with `[v0]` in the browser console:
-\`\`\`javascript
-console.log("[v0] User logged in:", user)
-\`\`\`
+The application will be available at `http://localhost:3000`.
 
-## Troubleshooting
+### Building for Production
+```bash
+npm run build
+npm start
+```
 
-### Login Issues
-- Ensure you're using the correct demo credentials
-- Clear browser localStorage if you encounter session issues
-- Check browser console for `[v0]` debug messages
-
-### Data Not Loading
-- Verify Supabase environment variables are configured
-- Check the Connect tab in v0 sidebar to confirm Supabase integration
-- Database has been seeded with sample data
-
-### CSS Errors
-- All Tailwind v4 configuration is in `globals.css`
-- No `tailwind.config.js` file is needed
-- Font loading uses Google Fonts (Inter) instead of local files
-
-## Support
-
-For issues or questions:
-1. Check the browser console for `[v0]` debug logs
-2. Verify your user role has appropriate permissions
-3. Review the SETUP.md file for detailed configuration
-
-## License
-
-© 2025 ArcGIS Compliance Tool. All rights reserved.
-Phase 1 - Ontario Implementation
+### Available Scripts
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
