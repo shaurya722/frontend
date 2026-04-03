@@ -74,7 +74,7 @@ const communitySchema = yup.object().shape({
   province: yup.string().required('Province is required'),
   region: yup.string().required('Region is required'),
   zone: yup.string().required('Zone is required'),
-  census_year: yup.number().required('Census year is required').min(1900, 'Year must be 1900 or later').max(new Date().getFullYear() + 10, 'Year cannot be too far in the future'),
+  census_year: yup.number().required('Census year is required'),
   is_active: yup.boolean().required('Active status is required'),
   start_date: yup.date().nullable(),
   end_date: yup.date().nullable(),

@@ -5,6 +5,8 @@ import axiosInstance from '@/lib/axios-instance'
 export interface CensusYear {
   id: number
   year: number
+  start_date: string | null
+  end_date: string | null
 }
 
 export interface CensusYearsResponse {

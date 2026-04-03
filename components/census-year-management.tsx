@@ -203,6 +203,8 @@ export default function CensusYearManagement() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Year</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>End Date</TableHead>
                   <TableHead className='text-right'>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -212,6 +214,12 @@ export default function CensusYearManagement() {
                     <TableCell className='font-medium'>{year.id}</TableCell>
                     <TableCell className='text-lg font-semibold'>
                       {year.year}
+                    </TableCell>
+                    <TableCell>
+                      {year.start_date ? new Date(year.start_date).toLocaleDateString() : 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      {year.end_date ? new Date(year.end_date).toLocaleDateString() : 'N/A'}
                     </TableCell>
                     <TableCell className='text-right'>
                       <div className='flex justify-end gap-2'>

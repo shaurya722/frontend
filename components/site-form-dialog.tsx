@@ -220,13 +220,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
       }
     })
 
-    if (
-      newSite.site_start_date &&
-      newSite.site_end_date &&
-      new Date(newSite.site_start_date) > new Date(newSite.site_end_date)
-    ) {
-      markError('site_end_date', 'End date cannot be earlier than the start date')
-    }
+    // Removed end date vs start date validation per request
 
     newSite.programs.forEach(program => {
       const schedule = newSite.programSchedules[program]
@@ -237,6 +231,19 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
         )
       }
     })
+
+    // Validate that at least one Program is selected
+    if (newSite.programs.length === 0) {
+      markError('programs_required', 'Select at least one program')
+    }
+
+    // Validate that at least one of Materials Collected/Services OR Collection Sector is selected
+    const hasMaterials = newSite.materials_collected.length > 0
+    const hasSectors = newSite.collection_scope.length > 0
+
+    if (!hasMaterials && !hasSectors) {
+      markError('materials_or_sectors', 'Select at least one item in Materials Collected/Services or Collection Sector')
+    }
 
     return nextErrors
   }
@@ -264,6 +271,9 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
     const startKey = getProgramStartDateKey(program)
     if (!checked) {
       clearError(startKey)
+    }
+    if (checked) {
+      clearError('programs_required')
     }
     setNewSite(prev => {
       const exists = prev.programs.includes(program)
@@ -785,6 +795,9 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
           <TabsContent value='programs' className='space-y-4'>
             <div className='space-y-3'>
               <Label className='text-md font-bold'>Programs & Scheduling *</Label>
+              {errors.programs_required && (
+                <p className='text-xs text-destructive'>{errors.programs_required}</p>
+              )}
               <div className='grid grid-cols-1 gap-3'>
                 {SITE_PROGRAMS.map((program) => {
                   const isEnabled = newSite.programs.includes(program)
@@ -845,6 +858,9 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
 
             <div className='space-y-2'>
               <Label className='text-md font-bold'>Materials Collected/Services</Label>
+              {errors.materials_or_sectors && (
+                <p className='text-xs text-destructive'>{errors.materials_or_sectors}</p>
+              )}
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3'>
                 {materialsServices.map((material) => (
                   <div key={material} className='flex items-center space-x-2'>
@@ -868,6 +884,9 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
 
             <div className='space-y-2'>
               <Label className='text-md font-bold'>Collection Sector</Label>
+              {errors.materials_or_sectors && (
+                <p className='text-xs text-destructive'>{errors.materials_or_sectors}</p>
+              )}
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3'>
                 {collectionSectors.map((scope) => (
                   <div key={scope} className='flex items-center space-x-2'>

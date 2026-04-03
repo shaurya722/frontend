@@ -1066,11 +1066,8 @@ export default function RegulatoryRulesManagement({
                     id='edit-end-date'
                     type='date'
                     {...editForm.register('end_date')}
-                    className={editForm.formState.errors.end_date ? 'border-red-500' : ''}
+                    className=''
                   />
-                  {editForm.formState.errors.end_date && (
-                    <p className="text-sm text-red-500 mt-1">{editForm.formState.errors.end_date.message}</p>
-                  )}
                 </div>
               </div>
 

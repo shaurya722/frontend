@@ -11,9 +11,6 @@ import type {
   RegulatoryRulesCalculation,
 } from './types'
 
-/**
- * Fetch paginated community regulatory rules with filters, search, and sorting
- */
 export async function fetchCommunityRegulatoryRules(
   params: CommunityRegulatoryRulesQueryParams = {}
 ): Promise<{ results: CommunityRegulatoryRule[] }> {
@@ -59,9 +56,6 @@ export async function fetchCommunityRegulatoryRules(
   return response.data
 }
 
-/**
- * Fetch single community regulatory rule by ID
- */
 export async function fetchCommunityRegulatoryRuleById(id: string): Promise<CommunityRegulatoryRule> {
   const response = await axiosInstance.get<CommunityRegulatoryRule>(`/api/regulatory-rules/rules/${id}/`)
   return response.data

@@ -36,6 +36,19 @@ export interface Site {
   program_fertilizers: boolean;
   program_fertilizers_start_date: string | null;
   program_fertilizers_end_date: string | null;
+  // Materials collected booleans
+  material_paint?: boolean;
+  material_light_bulbs?: boolean;
+  material_batteries?: boolean;
+  material_oil_filters?: boolean;
+  material_tires?: boolean;
+  material_electronics?: boolean;
+  material_household_hazardous_waste?: boolean;
+  // Collection sector booleans
+  sector_residential?: boolean;
+  sector_commercial?: boolean;
+  sector_industrial?: boolean;
+  sector_institutional?: boolean;
   created_at: string;
   updated_at: string;
   site_name: string;
