@@ -35,3 +35,10 @@ export async function patchAdjacentAllocation(
   const { data } = await axiosInstance.patch(ALLOCATE, payload)
   return data
 }
+
+export async function fetchAdjacentAllocationById(
+  reallocationId: string,
+): Promise<unknown> {
+  const { data } = await axiosInstance.get(`${BASE}${reallocationId}/`)
+  return data
+}

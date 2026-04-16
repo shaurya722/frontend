@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   allocateAdjacent,
   fetchAdjacentAllocations,
+  fetchAdjacentAllocationById,
   patchAdjacentAllocation,
 } from '@/features/adjacent-allocations/api'
 import { rowsFromListPayload } from '@/features/adjacent-allocations/normalize'
@@ -55,5 +56,21 @@ export function usePatchAdjacentAllocation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ADJACENT_ALLOCATIONS_QUERY_KEY })
     },
+  })
+}
+
+export const ADJACENT_ALLOCATION_BY_ID_QUERY_KEY = [
+  'adjacent-allocation-by-id',
+] as const
+
+export function adjacentAllocationByIdQueryKey(reallocationId: string) {
+  return [...ADJACENT_ALLOCATION_BY_ID_QUERY_KEY, reallocationId] as const
+}
+
+export function useAdjacentAllocation(reallocationId: string | null) {
+  return useQuery({
+    queryKey: adjacentAllocationByIdQueryKey(reallocationId ?? ''),
+    queryFn: () => fetchAdjacentAllocationById(reallocationId!),
+    enabled: !!reallocationId && reallocationId.length > 0,
   })
 }

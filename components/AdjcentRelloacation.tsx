@@ -38,17 +38,18 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Info, ArrowRight, Loader2, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { Info, ArrowRight, Loader2, ChevronLeft, ChevronRight, Eye, Building2, TrendingDown, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { PaginationControls } from '@/components/pagination-controls'
 import {
   useAdjacentAllocations,
+  useAdjacentAllocation,
   useAllocateAdjacent,
-  usePatchAdjacentAllocation,
 } from '@/hooks/useAdjacentAllocations'
 import { useCensusYears } from '@/hooks/useCensusYears'
 import type { AdjacentCommunityUi, AdjacentShortfallUi } from '@/features/adjacent-allocations/types'
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 
 const PROGRAMS = [
   'Paint',
@@ -66,6 +67,7 @@ export default function AdjacentReallocation() {
   const [program, setProgram] = useState<string>('Paint')
   const [censusYear, setCensusYear] = useState('2050')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const censusYearOptions = useMemo(() => {
     const fromApi =
@@ -86,9 +88,9 @@ export default function AdjacentReallocation() {
       program,
       year: parseInt(censusYear, 10) || 2050,
       page,
-      limit: PAGE_SIZE,
+      limit: pageSize,
     }),
-    [program, censusYear, page],
+    [program, censusYear, page, pageSize],
   )
 
   const {
@@ -100,15 +102,16 @@ export default function AdjacentReallocation() {
   } = useAdjacentAllocations(listParams)
 
   const allocateMutation = useAllocateAdjacent()
-  const patchMutation = usePatchAdjacentAllocation()
 
   const rows = listData?.rows ?? []
   const total = listData?.total ?? 0
   const totalPages =
     listData?.totalPages ??
-    Math.max(1, Math.ceil(total / PAGE_SIZE) || 1)
+    Math.max(1, Math.ceil(total / pageSize) || 1)
+  const currentPage = listData?.page ?? page
+  const hasNext = listData?.hasNext ?? currentPage < totalPages
+  const hasPrev = listData?.hasPrev ?? currentPage > 1
   const summary = listData?.summary
-  const apiCensusYear = listData?.censusYear
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -130,16 +133,16 @@ export default function AdjacentReallocation() {
   const [targetCommunityId, setTargetCommunityId] = useState('')
   const [allocateReason, setAllocateReason] = useState('Adjacent reallocation')
 
-  const [patchOpen, setPatchOpen] = useState(false)
-  const [patchContext, setPatchContext] = useState<{
+  const [viewOpen, setViewOpen] = useState(false)
+  const [viewContext, setViewContext] = useState<{
     reallocationId: string
     fromCommunity: AdjacentCommunityUi
     adjacent: AdjacentShortfallUi
   } | null>(null)
-  const [patchNewTargetId, setPatchNewTargetId] = useState('')
-  const [patchReason, setPatchReason] = useState(
-    'Corrected adjacent allocation',
-  )
+
+  // Fetch allocation details when view dialog is open
+  const { data: allocationDetails, isLoading: allocationDetailsLoading } =
+    useAdjacentAllocation(viewContext?.reallocationId ?? null)
 
   const handleOpenAllocate = (community: AdjacentCommunityUi) => {
     setSelectedCommunity(community)
@@ -149,19 +152,17 @@ export default function AdjacentReallocation() {
     setAllocateOpen(true)
   }
 
-  const handleOpenPatch = (
+  const handleOpenView = (
     fromCommunity: AdjacentCommunityUi,
     adjacent: AdjacentShortfallUi,
+    reallocationId: string,
   ) => {
-    if (!adjacent.reallocation_id) return
-    setPatchContext({
-      reallocationId: adjacent.reallocation_id,
+    setViewContext({
+      reallocationId,
       fromCommunity,
       adjacent,
     })
-    setPatchNewTargetId('')
-    setPatchReason('Corrected adjacent allocation')
-    setPatchOpen(true)
+    setViewOpen(true)
   }
 
   const toggleSite = (censusId: number) => {
@@ -212,53 +213,9 @@ export default function AdjacentReallocation() {
     }
   }
 
-  const handleConfirmPatch = async () => {
-    if (!patchContext || !patchNewTargetId) {
-      toast({
-        title: 'Missing target',
-        description: 'Choose a new target community.',
-        variant: 'destructive',
-      })
-      return
-    }
-    try {
-      await patchMutation.mutateAsync({
-        reallocation_id: patchContext.reallocationId,
-        new_to_community_id: patchNewTargetId,
-        program,
-        reason: patchReason.trim() || 'Corrected adjacent allocation',
-      })
-      toast({ title: 'Allocation updated', description: 'PATCH applied.' })
-      setPatchOpen(false)
-      setPatchContext(null)
-    } catch (e: unknown) {
-      const message =
-        e && typeof e === 'object' && 'message' in e
-          ? String((e as { message?: string }).message)
-          : 'Update failed'
-      toast({
-        title: 'Request failed',
-        description: message,
-        variant: 'destructive',
-      })
-    }
-  }
 
   return (
     <div className="space-y-6">
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          Data from{' '}
-          <code className="text-xs">
-            GET /api/compliance/adjacent-allocations/
-          </code>{' '}
-          (query: <code className="text-xs">program</code>,{' '}
-          <code className="text-xs">year</code>, page, limit). Allocate via{' '}
-          <code className="text-xs">POST …/allocate/</code>, correct via{' '}
-          <code className="text-xs">PATCH …/allocate/</code>.
-        </AlertDescription>
-      </Alert>
 
       {isError && (
         <Alert variant="destructive">
@@ -323,88 +280,67 @@ export default function AdjacentReallocation() {
       </Card>
 
       {summary && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Summary</CardTitle>
-            <CardDescription>
-              From API <code className="text-xs">summary</code>
-              {apiCensusYear ? (
-                <>
-                  {' '}
-                  · census year{' '}
-                  <strong>{apiCensusYear.year}</strong>
-                </>
-              ) : null}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-sm">
-              <div>
-                <p className="text-muted-foreground text-xs">Communities</p>
-                <p className="font-semibold">{summary.total_communities ?? '—'}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">With shortfall</p>
-                <p className="font-semibold">
-                  {summary.communities_with_shortfall ?? '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">With excess</p>
-                <p className="font-semibold">
-                  {summary.communities_with_excess ?? '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Total shortfall</p>
-                <p className="font-semibold">{summary.total_shortfall ?? '—'}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Total excess</p>
-                <p className="font-semibold">{summary.total_excess ?? '—'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4'>
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>Communities</CardTitle>
+              <Building2 className='h-4 w-4 text-muted-foreground' />
+            </CardHeader>
+            <CardContent>
+              <div className='text-2xl font-bold'>{summary.total_communities ?? '—'}</div>
+              <p className='text-xs text-muted-foreground'>Total communities</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>With Shortfall</CardTitle>
+              <TrendingDown className='h-4 w-4 text-red-600' />
+            </CardHeader>
+            <CardContent>
+              <div className='text-2xl font-bold text-red-600'>{summary.communities_with_shortfall ?? '—'}</div>
+              <p className='text-xs text-muted-foreground'>Communities needing allocation</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>With Excess</CardTitle>
+              <TrendingUp className='h-4 w-4 text-green-600' />
+            </CardHeader>
+            <CardContent>
+              <div className='text-2xl font-bold text-green-600'>{summary.communities_with_excess ?? '—'}</div>
+              <p className='text-xs text-muted-foreground'>Communities with surplus</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>Total Shortfall</CardTitle>
+              <AlertCircle className='h-4 w-4 text-orange-600' />
+            </CardHeader>
+            <CardContent>
+              <div className='text-2xl font-bold text-orange-600'>{summary.total_shortfall ?? '—'}</div>
+              <p className='text-xs text-muted-foreground'>Sites needed</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>Total Excess</CardTitle>
+              <CheckCircle2 className='h-4 w-4 text-blue-600' />
+            </CardHeader>
+            <CardContent>
+              <div className='text-2xl font-bold text-blue-600'>{summary.total_excess ?? '—'}</div>
+              <p className='text-xs text-muted-foreground'>Sites available</p>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
-          <CardTitle>Communities</CardTitle>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {isLoading ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading…
-              </span>
-            ) : (
-              <>
-                <span>
-                  {total} total · page {page} of {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  disabled={page <= 1 || isLoading}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  disabled={page >= totalPages || isLoading}
-                  onClick={() => setPage((p) => p + 1)}
-                  aria-label="Next page"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-          </div>
+        <CardHeader>
+          <CardTitle>Communities with Eligible Excess Sites</CardTitle>
         </CardHeader>
 
         <CardContent>
@@ -497,13 +433,36 @@ export default function AdjacentReallocation() {
                       )}
                     </TableCell>
                     <TableCell className="text-right align-middle">
-                      <Button
-                        size="sm"
-                        onClick={() => handleOpenAllocate(c)}
-                        disabled={c.eligibleSites.length === 0 || c.adjacentWithShortfalls.length === 0}
-                      >
-                        Reallocate
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        {c.allocatedOut.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Open view dialog with first allocation
+                              const firstAlloc = c.allocatedOut[0]
+                              // Find the adjacent community that matches the allocation's toCommunity
+                              const targetAdjacent = c.adjacentWithShortfalls.find(
+                                a => a.name === firstAlloc.toCommunity || a.id === firstAlloc.toCommunityId
+                              ) || c.adjacentWithShortfalls[0]
+                              // Use the allocation's id as the reallocation_id
+                              if (firstAlloc.id) {
+                                handleOpenView(c, targetAdjacent, firstAlloc.id)
+                              }
+                            }}
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            View
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => handleOpenAllocate(c)}
+                          disabled={c.eligibleSites.length === 0 || c.adjacentWithShortfalls.length === 0}
+                        >
+                          Reallocate
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -515,6 +474,23 @@ export default function AdjacentReallocation() {
               Client-side filter: {filteredRows.length} of {rows.length} on this page.
             </p>
           )}
+
+          <PaginationControls
+            page={currentPage}
+            pageSize={pageSize}
+            totalCount={total}
+            currentCount={filteredRows.length}
+            onPageChange={(newPage) => setPage(newPage)}
+            isLoading={isLoading}
+            hasNext={hasNext}
+            hasPrev={hasPrev}
+            label="communities"
+            pageSizeOptions={[10, 20, 50, 100]}
+            onPageSizeChange={(value) => {
+              setPageSize(value)
+              setPage(1)
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -633,76 +609,68 @@ export default function AdjacentReallocation() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={patchOpen} onOpenChange={setPatchOpen}>
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Correct adjacent allocation</DialogTitle>
-            <DialogDescription>
-              PATCH with <code className="text-xs">reallocation_id</code>,{' '}
-              <code className="text-xs">new_to_community_id</code>, program, reason.
-            </DialogDescription>
+            <DialogTitle>Allocation Details</DialogTitle>
           </DialogHeader>
 
-          {patchContext && (
+          {viewContext && (
             <>
+              {/* Allocation Details from GET by ID */}
+              {allocationDetailsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading allocation details…
+                </div>
+              ) : allocationDetails ? (
+                <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                  <p className="text-sm font-medium">Current Allocation Details</p>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>
+                      <span className="text-foreground">Site:</span>{' '}
+                      {(allocationDetails as { site_name?: string })?.site_name ?? '—'}
+                    </p>
+                    <p>
+                      <span className="text-foreground">From:</span>{' '}
+                      {(() => {
+                        const fc = (allocationDetails as { from_community?: unknown })?.from_community
+                        if (typeof fc === 'string') return fc
+                        if (fc && typeof fc === 'object') return (fc as { name?: string }).name ?? '—'
+                        return viewContext.fromCommunity.name
+                      })()}
+                    </p>
+                    <p>
+                      <span className="text-foreground">To:</span>{' '}
+                      {(() => {
+                        const tc = (allocationDetails as { to_community?: unknown })?.to_community
+                        if (typeof tc === 'string') return tc
+                        if (tc && typeof tc === 'object') return (tc as { name?: string }).name ?? '—'
+                        return viewContext.adjacent.name
+                      })()}
+                    </p>
+                    <p>
+                      <span className="text-foreground">Reallocated:</span>{' '}
+                      {(allocationDetails as { reallocated_at?: string })?.reallocated_at
+                        ? new Date((allocationDetails as { reallocated_at: string }).reallocated_at).toLocaleString()
+                        : '—'}
+                    </p>
+                    <p>
+                      <span className="text-foreground">Reason:</span>{' '}
+                      {(allocationDetails as { reason?: string })?.reason ?? '—'}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
               <p className="text-sm text-muted-foreground">
-                From <strong>{patchContext.fromCommunity.name}</strong> · current
-                target <strong>{patchContext.adjacent.name}</strong>
+                From <strong>{viewContext.fromCommunity.name}</strong> · current
+                target <strong>{viewContext.adjacent.name}</strong>
               </p>
-              <p className="text-xs font-mono break-all text-muted-foreground">
-                reallocation_id: {patchContext.reallocationId}
-              </p>
-
-              <div className="space-y-2">
-                <Label>New target community</Label>
-                <Select
-                  value={patchNewTargetId}
-                  onValueChange={setPatchNewTargetId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select new target" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patchContext.fromCommunity.adjacentWithShortfalls.map(
-                      (a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
-                          {a.id === patchContext.adjacent.id
-                            ? ' (current target)'
-                            : ''}
-                        </SelectItem>
-                      ),
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="patch-reason">Reason</Label>
-                <Textarea
-                  id="patch-reason"
-                  value={patchReason}
-                  onChange={(e) => setPatchReason(e.target.value)}
-                  rows={2}
-                />
-              </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setPatchOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => void handleConfirmPatch()}
-                  disabled={patchMutation.isPending || !patchNewTargetId}
-                >
-                  {patchMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Updating…
-                    </>
-                  ) : (
-                    'Update allocation'
-                  )}
+                <Button variant="outline" onClick={() => setViewOpen(false)}>
+                  Close
                 </Button>
               </DialogFooter>
             </>

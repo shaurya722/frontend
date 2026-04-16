@@ -145,6 +145,10 @@ export interface AdjacentListSelectResult {
   rows: AdjacentCommunityUi[]
   total: number
   totalPages: number
+  page?: number
+  pageSize?: number
+  hasNext?: boolean
+  hasPrev?: boolean
   summary?: AdjacentAllocationsSummary
   censusYear?: { id: number; year: number }
 }

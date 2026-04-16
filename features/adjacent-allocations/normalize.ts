@@ -92,13 +92,34 @@ export function normalizeCommunityRow(
     if (!id) return null
     const siteCensusId = Number(a.site_census_id ?? a.siteCensusId ?? 0)
     if (!Number.isFinite(siteCensusId) || siteCensusId <= 0) return null
+    
+    // Handle to_community as either string or object {id, name, compliance}
+    let toCommunity = ''
+    const rawToCommunity = a.to_community ?? a.toCommunity
+    if (typeof rawToCommunity === 'string') {
+      toCommunity = rawToCommunity
+    } else if (rawToCommunity && typeof rawToCommunity === 'object') {
+      const obj = rawToCommunity as { name?: string; id?: string }
+      toCommunity = obj.name ?? obj.id ?? ''
+    }
+    
+    // Handle from_community as either string or object
+    let fromCommunity = ''
+    const rawFromCommunity = a.from_community ?? a.fromCommunity
+    if (typeof rawFromCommunity === 'string') {
+      fromCommunity = rawFromCommunity
+    } else if (rawFromCommunity && typeof rawFromCommunity === 'object') {
+      const obj = rawFromCommunity as { name?: string; id?: string }
+      fromCommunity = obj.name ?? obj.id ?? ''
+    }
+    
     return {
       id,
       siteCensusId,
       siteName: String(a.site_name ?? a.siteName ?? ''),
-      fromCommunity: String(a.from_community ?? a.fromCommunity ?? ''),
+      fromCommunity,
       fromCommunityId: String(a.from_community_id ?? a.fromCommunityId ?? ''),
-      toCommunity: String(a.to_community ?? a.toCommunity ?? ''),
+      toCommunity,
       toCommunityId: String(a.to_community_id ?? a.toCommunityId ?? ''),
       reallocatedAt: String(a.reallocated_at ?? a.reallocatedAt ?? ''),
       reason: String(a.reason ?? ''),
@@ -169,11 +190,17 @@ export function rowsFromListPayload(
 
   const summary = d.summary as AdjacentAllocationsSummary | undefined
   const censusYear = d.census_year as { id: number; year: number } | undefined
+  const page = Number(d.page ?? 1)
+  const currentPage = Number.isFinite(page) && page > 0 ? page : 1
 
   return {
     rows,
     total,
     totalPages,
+    page: currentPage,
+    pageSize,
+    hasNext: currentPage < totalPages,
+    hasPrev: currentPage > 1,
     summary,
     censusYear,
   }
