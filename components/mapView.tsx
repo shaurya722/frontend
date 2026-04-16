@@ -1045,17 +1045,8 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex gap-3">
-                <Button 
-                  variant={isDrawingMode ? "default" : "outline"} 
-                  onClick={toggleDrawingMode}
-                  className={isDrawingMode ? "bg-blue-600 hover:bg-blue-700" : ""}
-                >
-                  {isDrawingMode ? "Drawing Mode On" : "Draw Polygon"}
-                </Button>
-                <Button variant="outline" onClick={handleResetFilters}>Reset</Button>
+            
                 <Button variant="outline">Export</Button>
-              </div>
            
               {/* Advanced Filters Toggle */}
               {/* <div className='space-y-1'>
