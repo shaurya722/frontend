@@ -2,8 +2,8 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/router"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,13 +15,32 @@ import { defaultProtectedRoute } from "@/lib/route-config"
 
 export default function LoginPage() {
   const [credentials, setCredentials] = useState({
-    email: "",
-    password: "",
+    email: "admin@email.com",
+    password: "admin",
   })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isAuthChecking, setIsAuthChecking] = useState(true)
   const router = useRouter()
+
+  // Check if user is already authenticated
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const accessToken = localStorage.getItem('access_token')
+      const userData = localStorage.getItem('user')
+
+      if (accessToken && userData) {
+        // User is already logged in, redirect to dashboard
+        router.replace(defaultProtectedRoute)
+      } else {
+        // No authentication found, show login form
+        setIsAuthChecking(false)
+      }
+    } else {
+      setIsAuthChecking(false)
+    }
+  }, [router, defaultProtectedRoute])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
