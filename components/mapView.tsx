@@ -1,25 +1,33 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useMemo, Suspense, lazy } from 'react'
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  Suspense,
+  lazy,
+} from "react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Layers,
   Filter,
@@ -33,78 +41,101 @@ import {
   TrendingUp,
   Users,
   Building2,
-} from 'lucide-react'
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { useCensusYears } from '@/hooks/useCensusYears'
-import { useMapData } from '@/hooks/useMapData'
-import { useCommunityDropdown } from '@/features/communities'
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import {
+  useAvailableMapCommunities,
+  useCreateMapCommunity,
+  useDeleteMapCommunity,
+  useMapCommunities,
+  useUpdateMapCommunity,
+} from "@/hooks/useMapCommunities";
+import type {
+  MapCommunity,
+  MapCommunityBoundary,
+} from "@/features/map-communities/types";
+import { useCensusYears } from "@/hooks/useCensusYears";
+import { useMapData } from "@/hooks/useMapData";
+import { useCommunityDropdown } from "@/features/communities";
 
 // Lazy load the Leaflet map component
-const LeafletMap = lazy(() => import('./leaflet-map'))
+const LeafletMap = lazy(() => import("./leaflet-map"));
 
 interface CollectionSite {
-  id: string
-  name: string
-  address: string
-  status: string
-  operator_type: string
-  site_type: string
-  latitude: number
-  longitude: number
-  programs: string[]
-  municipality?: { name: string }
-  population_served?: number
-  created_at?: string
-  active_dates?: string
+  id: string;
+  name: string;
+  address: string;
+  status: string;
+  operator_type: string;
+  site_type: string;
+  latitude: number;
+  longitude: number;
+  programs: string[];
+  municipality?: { name: string };
+  population_served?: number;
+  created_at?: string;
+  active_dates?: string;
 }
 
 interface Municipality {
-  id: string
-  name: string
-  tier: string
-  population: number
+  id: string;
+  name: string;
+  tier: string;
+  population: number;
 }
 
 interface CensusYear {
-  id: number
-  year: number
+  id: number;
+  year: number;
 }
 
 interface MapDataResponse {
-  sites: CollectionSite[]
-  municipalities: Municipality[]
-  census_year: CensusYear
+  sites: CollectionSite[];
+  municipalities: Municipality[];
+  census_year: CensusYear;
 }
 
 interface MapViewProps {
-  sites?: CollectionSite[]
-  municipalities?: Municipality[]
+  sites?: CollectionSite[];
+  municipalities?: Municipality[];
 }
 
 interface MapLayer {
-  id: string
-  name: string
-  visible: boolean
-  color: string
+  id: string;
+  name: string;
+  visible: boolean;
+  color: string;
 }
 
 export default function MapView({ sites, municipalities }: MapViewProps) {
+  const { toast } = useToast();
   // Get current performance year (default to current year)
-  const currentYear = new Date().getFullYear()
+  const currentYear = new Date().getFullYear();
 
-  const [selectedSite, setSelectedSite] = useState<CollectionSite | null>(null)
+  const [selectedSite, setSelectedSite] = useState<CollectionSite | null>(null);
   const [selectedLegendType, setSelectedLegendType] = useState<string | null>(
     null,
-  )
-  const [showLegendInfo, setShowLegendInfo] = useState(false)
-  const [isMapLoading, setIsMapLoading] = useState(true)
+  );
+  const [showLegendInfo, setShowLegendInfo] = useState(false);
+  const [isMapLoading, setIsMapLoading] = useState(true);
   // const [mapLayers, setMapLayers] = useState<MapLayer[]>([
   //   { id: 'sites', name: 'Collection Sites', visible: true, color: '#3b82f6' },
   //   {
@@ -123,65 +154,127 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
   // Enhanced filters state
   const [mapFilters, setMapFilters] = useState({
-    status: 'all',
+    status: "all",
     programs: [] as string[],
-    municipality: 'all',
+    municipality: "all",
     operatorTypes: [] as string[],
     siteTypes: [] as string[],
-    performancePeriod: '2035',
-    tier: 'all',
-    minPopulation: '',
-    maxPopulation: '',
-    hasCoordinates: 'all', // 'all', 'with', 'without'
+    performancePeriod: "2035",
+    tier: "all",
+    search: "",
+    minPopulation: "",
+    maxPopulation: "",
+    hasCoordinates: "all", // 'all', 'with', 'without'
     page: 1,
-    limit: 5,
+    limit: 30,
     municipalities_page: 1,
-    municipalities_limit: 3,
-  })
+    municipalities_limit: 30,
+  });
 
-  const [searchLocation, setSearchLocation] = useState('')
-  const [showPopup, setShowPopup] = useState(false)
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [searchLocation, setSearchLocation] = useState("");
+  const [showPopup, setShowPopup] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [saveMapCommunityOpen, setSaveMapCommunityOpen] = useState(false);
+  const [pendingMapBoundary, setPendingMapBoundary] =
+    useState<MapCommunityBoundary | null>(null);
+  const [saveCommunitySearch, setSaveCommunitySearch] = useState("");
+  const [debouncedSaveCommunitySearch, setDebouncedSaveCommunitySearch] =
+    useState("");
+  const [selectedCreateCommunityId, setSelectedCreateCommunityId] =
+    useState("");
+  const [editMapCommunityOpen, setEditMapCommunityOpen] = useState(false);
+  const [editingMapCommunity, setEditingMapCommunity] =
+    useState<MapCommunity | null>(null);
+  const [editCommunitySearch, setEditCommunitySearch] = useState("");
+  const [debouncedEditCommunitySearch, setDebouncedEditCommunitySearch] =
+    useState("");
+  const [selectedEditCommunityId, setSelectedEditCommunityId] = useState("");
+  const [deleteMapCommunityOpen, setDeleteMapCommunityOpen] = useState(false);
 
   // API data state
-  const [apiData, setApiData] = useState<MapDataResponse | null>(null)
-  const [isLoadingData, setIsLoadingData] = useState(true)
-  const [dataError, setDataError] = useState<string | null>(null)
-  const [availableYears, setAvailableYears] = useState<number[]>([])
+  const [apiData, setApiData] = useState<MapDataResponse | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
 
-  const { data: censusYearsData } = useCensusYears()
+  const { data: censusYearsData } = useCensusYears();
 
-  const { data: mapData, isLoading: isMapDataLoading, error: mapDataError } = useMapData(mapFilters)
+  const {
+    data: mapData,
+    isLoading: isMapDataLoading,
+    error: mapDataError,
+  } = useMapData({
+    ...mapFilters,
+    search: searchLocation,
+  });
 
   // Fetch communities for the selected year
-  const { data: communitiesDropdown } = useCommunityDropdown(parseInt(mapFilters.performancePeriod) || undefined)
+  const { data: communitiesDropdown } = useCommunityDropdown(
+    parseInt(mapFilters.performancePeriod) || undefined,
+  );
+
+  const { data: mapCommunitiesList = [] } = useMapCommunities();
+  const createMapCommunityMutation = useCreateMapCommunity();
+  const updateMapCommunityMutation = useUpdateMapCommunity();
+  const deleteMapCommunityMutation = useDeleteMapCommunity();
+
+  useEffect(() => {
+    const t = setTimeout(
+      () => setDebouncedSaveCommunitySearch(saveCommunitySearch),
+      300,
+    );
+    return () => clearTimeout(t);
+  }, [saveCommunitySearch]);
+
+  useEffect(() => {
+    const t = setTimeout(
+      () => setDebouncedEditCommunitySearch(editCommunitySearch),
+      300,
+    );
+    return () => clearTimeout(t);
+  }, [editCommunitySearch]);
+
+  const { data: saveAvailableData, isLoading: saveAvailableLoading } =
+    useAvailableMapCommunities(
+      debouncedSaveCommunitySearch,
+      100,
+      saveMapCommunityOpen,
+    );
+
+  const { data: editAvailableData, isLoading: editAvailableLoading } =
+    useAvailableMapCommunities(
+      debouncedEditCommunitySearch,
+      100,
+      editMapCommunityOpen,
+    );
 
   // Fetch available years for the filter dropdown
   useEffect(() => {
     if (censusYearsData) {
-      const years = censusYearsData.years?.map((item) => item.year) || []
-      setAvailableYears(years.sort((a: number, b: number) => b - a))
+      const years = censusYearsData.years?.map((item) => item.year) || [];
+      setAvailableYears(years.sort((a: number, b: number) => b - a));
     } else {
-      setAvailableYears([2021, 2022, 2023, 2024, 2025])
+      setAvailableYears([2021, 2022, 2023, 2024, 2025]);
     }
-  }, [censusYearsData])
+  }, [censusYearsData]);
 
   // Fetch data from Django API
   useEffect(() => {
     if (mapData) {
-      setApiData(mapData)
+      setApiData(mapData);
     } else if (mapDataError) {
-      setDataError(mapDataError.message)
-      setApiData(null)
+      setDataError(mapDataError.message);
+      setApiData(null);
     }
-    setIsLoadingData(isMapDataLoading)
-  }, [mapData, mapDataError, isMapDataLoading])
+    setIsLoadingData(isMapDataLoading);
+  }, [mapData, mapDataError, isMapDataLoading]);
 
   // Trigger loading state on mount
   useEffect(() => {
-    setIsMapLoading(true)
-    handleMapReady()
-  }, [])
+    setIsMapLoading(true);
+    handleMapReady();
+  }, []);
 
   // const handleLayerToggle = (layerId: string) => {
   //   setMapLayers((layers) =>
@@ -192,132 +285,279 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
   // }
 
   const handleSiteClick = (site: CollectionSite) => {
-    setSelectedSite(site)
-    setShowPopup(true)
-  }
+    setSelectedSite(site);
+    setShowPopup(true);
+  };
 
   const handleLegendClick = (operatorType: string) => {
     const sitesOfType = filteredSites.filter(
       (s) => s.operator_type === operatorType,
-    )
+    );
     if (sitesOfType.length > 0) {
-      setSelectedLegendType(operatorType)
-      setShowLegendInfo(true)
+      setSelectedLegendType(operatorType);
+      setShowLegendInfo(true);
     }
-  }
+  };
 
   // Simulate map loading completion
   const handleMapReady = () => {
     setTimeout(() => {
-      setIsMapLoading(false)
-    }, 2000)
-  }
+      setIsMapLoading(false);
+    }, 2000);
+  };
+
+  // Handle polygon creation — offer to POST to /api/community/map-communities/
+  const handlePolygonCreate = (geoJSON: MapCommunityBoundary | null) => {
+    console.log("Polygon created in MapView:", geoJSON);
+    setIsDrawingMode(false);
+    if (
+      geoJSON &&
+      (geoJSON.type === "Polygon" || geoJSON.type === "MultiPolygon")
+    ) {
+      setPendingMapBoundary(geoJSON);
+      setSaveCommunitySearch("");
+      setDebouncedSaveCommunitySearch("");
+      setSelectedCreateCommunityId("");
+      setSaveMapCommunityOpen(true);
+    }
+  };
+
+  const handleSaveMapCommunity = async () => {
+    if (!pendingMapBoundary || !selectedCreateCommunityId) return;
+    try {
+      await createMapCommunityMutation.mutateAsync({
+        community_id: selectedCreateCommunityId,
+        boundary: pendingMapBoundary,
+      });
+      toast({
+        title: "Map community saved",
+        description: `Boundary linked to community ${selectedCreateCommunityId}.`,
+      });
+      setSaveMapCommunityOpen(false);
+      setPendingMapBoundary(null);
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === "object" && "message" in e
+          ? String((e as { message?: string }).message)
+          : "Failed to save map community";
+      toast({
+        title: "Could not save",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSkipSaveMapCommunity = () => {
+    setSaveMapCommunityOpen(false);
+    setPendingMapBoundary(null);
+    setSelectedCreateCommunityId("");
+    setSaveCommunitySearch("");
+  };
+
+  const handleMapCommunityClick = useCallback((c: MapCommunity) => {
+    setEditingMapCommunity(c);
+    setSelectedEditCommunityId(c.id);
+    setEditCommunitySearch(c.name);
+    setDebouncedEditCommunitySearch(c.name);
+    setEditMapCommunityOpen(true);
+  }, []);
+
+  const handleUpdateMapCommunity = async () => {
+    if (!editingMapCommunity || !selectedEditCommunityId) return;
+    const picked = editAvailableData?.communities.find(
+      (row) => row.id === selectedEditCommunityId,
+    );
+    try {
+      await updateMapCommunityMutation.mutateAsync({
+        id: editingMapCommunity.id,
+        payload: {
+          community_id: selectedEditCommunityId,
+          ...(picked?.name != null ? { name: picked.name } : {}),
+        },
+      });
+      toast({
+        title: "Updated",
+        description: `PATCH for community id ${selectedEditCommunityId}.`,
+      });
+      setEditMapCommunityOpen(false);
+      setEditingMapCommunity(null);
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === "object" && "message" in e
+          ? String((e as { message?: string }).message)
+          : "Failed to update map community";
+      toast({
+        title: "Update failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleConfirmDeleteMapCommunity = async () => {
+    if (!editingMapCommunity) return;
+    const id = editingMapCommunity.id;
+    try {
+      await deleteMapCommunityMutation.mutateAsync(id);
+      toast({
+        title: "Deleted",
+        description: "Map community was removed.",
+      });
+      setDeleteMapCommunityOpen(false);
+      setEditMapCommunityOpen(false);
+      setEditingMapCommunity(null);
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === "object" && "message" in e
+          ? String((e as { message?: string }).message)
+          : "Failed to delete map community";
+      toast({
+        title: "Delete failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Toggle drawing mode
+  const toggleDrawingMode = () => {
+    setIsDrawingMode(!isDrawingMode)
+  };
+
+  const handleResetFilters = () => {
+    setMapFilters({
+      status: "all",
+      programs: [],
+      municipality: "all",
+      operatorTypes: [],
+      siteTypes: [],
+      performancePeriod: availableYears.length > 0 ? availableYears[0].toString() : currentYear.toString(),
+      tier: "all",
+      search: "",
+      minPopulation: "",
+      maxPopulation: "",
+      hasCoordinates: "all",
+      page: 1,
+      limit: 30,
+      municipalities_page: 1,
+      municipalities_limit: 30,
+    });
+    setSearchLocation("");
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Active':
-        return 'bg-green-500'
-      case 'Scheduled':
-        return 'bg-yellow-500'
-      case 'Inactive':
-        return 'bg-red-500'
-      case 'Pending':
-        return 'bg-blue-500'
+      case "Active":
+        return "bg-green-500";
+      case "Scheduled":
+        return "bg-yellow-500";
+      case "Inactive":
+        return "bg-red-500";
+      case "Pending":
+        return "bg-blue-500";
       default:
-        return 'bg-gray-500'
+        return "bg-gray-500";
     }
-  }
+  };
 
   const getOperatorTypeColor = (operatorType: string) => {
     switch (operatorType) {
-      case 'Retailer':
-        return '#3b82f6' // blue-500
-      case 'Distributor':
-        return '#a855f7' // purple-500
-      case 'Municipal':
-        return '#14b8a6' // teal-500
-      case 'First Nation/Indigenous':
-        return '#f59e0b' // amber-500
-      case 'Private Depot':
-        return '#10b981' // green-500
-      case 'Product Care':
-        return '#06b6d4' // cyan-500
-      case 'Regional District':
-        return '#6366f1' // indigo-500
-      case 'Regional Service Commission':
-        return '#ec4899' // pink-500
-      case 'Other':
-        return '#6b7280' // gray-500
+      case "Retailer":
+        return "#3b82f6"; // blue-500
+      case "Distributor":
+        return "#a855f7"; // purple-500
+      case "Municipal":
+        return "#14b8a6"; // teal-500
+      case "First Nation/Indigenous":
+        return "#f59e0b"; // amber-500
+      case "Private Depot":
+        return "#10b981"; // green-500
+      case "Product Care":
+        return "#06b6d4"; // cyan-500
+      case "Regional District":
+        return "#6366f1"; // indigo-500
+      case "Regional Service Commission":
+        return "#ec4899"; // pink-500
+      case "Other":
+        return "#6b7280"; // gray-500
       default:
-        return '#9ca3af' // gray-400
+        return "#9ca3af"; // gray-400
     }
-  }
+  };
 
   // Helper function to check if site is active in the current performance year
   const isSiteActiveInYear = (site: CollectionSite, year: number): boolean => {
     // If no active_dates, include by default (sites without date restrictions)
-    if (!site.active_dates) return true
+    if (!site.active_dates) return true;
 
     try {
-      const dateStr = String(site.active_dates)
+      const dateStr = String(site.active_dates);
 
       // Handle PostgreSQL DATERANGE format: "[2020-01-01,)" or "[2020-01-01,2023-12-31)" or "(2020-01-01,2023-12-31]"
       // Also handle if it's already a string representation
 
       // Extract all years from the date range string
-      const yearMatches = dateStr.match(/\d{4}/g)
+      const yearMatches = dateStr.match(/\d{4}/g);
 
       if (yearMatches && yearMatches.length > 0) {
-        const startYear = parseInt(yearMatches[0])
-        const endYear = yearMatches.length > 1 ? parseInt(yearMatches[1]) : null
+        const startYear = parseInt(yearMatches[0]);
+        const endYear =
+          yearMatches.length > 1 ? parseInt(yearMatches[1]) : null;
 
         // Check if current year is within the range
         if (endYear) {
           // Has both start and end year - check if current year is within range
-          return year >= startYear && year <= endYear
+          return year >= startYear && year <= endYear;
         } else {
           // Only has start year (open-ended range) - check if current year is >= start year
-          return year >= startYear
+          return year >= startYear;
         }
       }
 
       // If we can't extract years, try to parse as a date string
       // This handles cases where active_dates might be in a different format
-      const dateMatch = dateStr.match(/(\d{4}-\d{2}-\d{2})/)
+      const dateMatch = dateStr.match(/(\d{4}-\d{2}-\d{2})/);
       if (dateMatch) {
-        const date = new Date(dateMatch[1])
-        const dateYear = date.getFullYear()
-        return year >= dateYear
+        const date = new Date(dateMatch[1]);
+        const dateYear = date.getFullYear();
+        return year >= dateYear;
       }
     } catch (e) {
       // If parsing fails, include the site to avoid filtering out valid data
       console.warn(
-        '[MapView] Error parsing active_dates for site:',
+        "[MapView] Error parsing active_dates for site:",
         site.name,
         site.active_dates,
         e,
-      )
-      return true
+      );
+      return true;
     }
 
     // Default: include site if we can't determine (fail open)
-    return true
-  }
+    return true;
+  };
 
   // Safe arrays derived from API data (fallback to empty arrays if unavailable)
-  const safeSites: CollectionSite[] = apiData?.sites || []
-  const safeMunicipalities: Municipality[] = apiData?.municipalities || []
+  const safeSites: CollectionSite[] = apiData?.sites || [];
+  const safeMunicipalities: Municipality[] = apiData?.municipalities || [];
 
   // Enhanced filtering logic
   const filteredSites: CollectionSite[] = useMemo(() => {
-    console.log('[MapView] Filtering sites:', {
+    console.log("[MapView] Filtering sites:", {
       totalSites: safeSites.length,
       hasApiData: !!apiData,
       performancePeriod: mapFilters.performancePeriod,
       searchLocation,
       filters: mapFilters,
-      safeSites: safeSites.map((s: CollectionSite) => ({ name: s.name, status: s.status, operator_type: s.operator_type, municipality: s.municipality?.name, programs: s.programs }))
-    })
+      safeSites: safeSites.map((s: CollectionSite) => ({
+        name: s.name,
+        status: s.status,
+        operator_type: s.operator_type,
+        municipality: s.municipality?.name,
+        programs: s.programs,
+      })),
+    });
 
     const result = (safeSites || []).filter((site: CollectionSite) => {
       // Performance period filter (census year)
@@ -326,8 +566,8 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       const matchesPerformancePeriod = apiData
         ? true // Include all sites when we have API data
         : site.active_dates
-        ? isSiteActiveInYear(site, parseInt(mapFilters.performancePeriod))
-        : true
+          ? isSiteActiveInYear(site, parseInt(mapFilters.performancePeriod))
+          : true;
 
       // Search location filter
       const matchesSearch =
@@ -337,48 +577,52 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         site.municipality?.name
           ?.toLowerCase()
           .includes(searchLocation.toLowerCase()) ||
-        site.operator_type?.toLowerCase().includes(searchLocation.toLowerCase())
+        site.operator_type
+          ?.toLowerCase()
+          .includes(searchLocation.toLowerCase());
 
       // Basic filters
       const matchesStatus =
-        mapFilters.status === 'all' || site.status === mapFilters.status
+        mapFilters.status === "all" || site.status === mapFilters.status;
 
-      const sitePrograms = site.programs || []
+      const sitePrograms = site.programs || [];
       const matchesProgram =
         mapFilters.programs.length === 0 ||
-        mapFilters.programs.some(p => sitePrograms.includes(p))
+        mapFilters.programs.some((p) => sitePrograms.includes(p));
 
       const matchesMunicipality =
-        mapFilters.municipality === 'all' ||
-        site.municipality?.name === mapFilters.municipality
+        mapFilters.municipality === "all" ||
+        site.municipality?.name === mapFilters.municipality;
 
-      const operatorType = site.operator_type || ''
+      const operatorType = site.operator_type || "";
       const matchesOperatorType =
         mapFilters.operatorTypes.length === 0 ||
-        mapFilters.operatorTypes.includes(operatorType)
+        mapFilters.operatorTypes.includes(operatorType);
 
       const matchesSiteType =
-        mapFilters.siteTypes.length === 0 || mapFilters.siteTypes.includes(site.site_type)
+        mapFilters.siteTypes.length === 0 ||
+        mapFilters.siteTypes.includes(site.site_type);
 
       // Advanced filters
       const matchesTier =
-        mapFilters.tier === 'all' ||
-        safeMunicipalities.find(m => m.name === site.municipality?.name)?.tier === mapFilters.tier
+        mapFilters.tier === "all" ||
+        safeMunicipalities.find((m) => m.name === site.municipality?.name)
+          ?.tier === mapFilters.tier;
 
-      const populationServed = site.population_served || 0
+      const populationServed = site.population_served || 0;
       const matchesMinPopulation =
         !mapFilters.minPopulation ||
-        populationServed >= parseInt(mapFilters.minPopulation)
+        populationServed >= parseInt(mapFilters.minPopulation);
 
       const matchesMaxPopulation =
         !mapFilters.maxPopulation ||
-        populationServed <= parseInt(mapFilters.maxPopulation)
+        populationServed <= parseInt(mapFilters.maxPopulation);
 
-      const hasCoordinates = site.latitude !== null && site.longitude !== null
+      const hasCoordinates = site.latitude !== null && site.longitude !== null;
       const matchesCoordinates =
-        mapFilters.hasCoordinates === 'all' ||
-        (mapFilters.hasCoordinates === 'with' && hasCoordinates) ||
-        (mapFilters.hasCoordinates === 'without' && !hasCoordinates)
+        mapFilters.hasCoordinates === "all" ||
+        (mapFilters.hasCoordinates === "with" && hasCoordinates) ||
+        (mapFilters.hasCoordinates === "without" && !hasCoordinates);
 
       // Debug each filter
       const debugInfo = {
@@ -407,12 +651,14 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
           siteMunicipality: site.municipality?.name,
           siteOperatorType: site.operator_type,
           siteSiteType: site.site_type,
-          siteTier: safeMunicipalities.find(m => m.name === site.municipality?.name)?.tier,
-          siteHasCoords: hasCoordinates
-        }
-      }
+          siteTier: safeMunicipalities.find(
+            (m) => m.name === site.municipality?.name,
+          )?.tier,
+          siteHasCoords: hasCoordinates,
+        },
+      };
 
-      const matches = (
+      const matches =
         matchesPerformancePeriod &&
         matchesSearch &&
         matchesStatus &&
@@ -423,57 +669,81 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         matchesTier &&
         matchesMinPopulation &&
         matchesMaxPopulation &&
-        matchesCoordinates
-      )
+        matchesCoordinates;
 
       if (!matches) {
-        console.log('[MapView] Site filtered out:', debugInfo)
+        console.log("[MapView] Site filtered out:", debugInfo);
       }
 
-      return matches
-    })
+      return matches;
+    });
 
-    console.log('[MapView] Filtered result:', result.length, 'sites')
+    console.log("[MapView] Filtered result:", result.length, "sites");
 
-    return result
-  }, [safeSites, mapFilters, safeMunicipalities])
+    return result;
+  }, [safeSites, mapFilters, safeMunicipalities]);
 
   // Get unique values for filters
   const uniqueTiers = Array.from(
     new Set(safeMunicipalities.map((m) => m.tier).filter(Boolean)),
-  ).sort()
+  ).sort();
 
   // Get unique operator types from filtered sites for dynamic legend
   const uniqueOperatorTypes = Array.from(
     new Set((filteredSites || []).map((s) => s.operator_type).filter(Boolean)),
-  ).sort() as string[]
+  ).sort() as string[];
 
   // Statistics for the dashboard
   const stats = useMemo(() => {
-    const totalSites = (filteredSites || []).length
-    const activeSites = (filteredSites || []).filter((s: CollectionSite) => s.status === 'Active').length
-    const sitesWithCoords = (filteredSites || []).filter((s: CollectionSite) => s.latitude && s.longitude).length
-    const totalCommunities = safeMunicipalities.length
+    const totalSites = (filteredSites || []).length;
+    const activeSites = (filteredSites || []).filter(
+      (s: CollectionSite) => s.status === "Active",
+    ).length;
+    const sitesWithCoords = (filteredSites || []).filter(
+      (s: CollectionSite) => s.latitude && s.longitude,
+    ).length;
+    const totalCommunities = safeMunicipalities.length;
+
+    // Prefer population provided on each site's municipality (deduped by municipality name)
+    const siteMunicipalityPopSum = (() => {
+      const seen = new Set<string>();
+      let sum = 0;
+      (filteredSites || []).forEach((s: CollectionSite) => {
+        const name = s.municipality?.name;
+        const pop = (s as any)?.municipality?.population as number | undefined;
+        if (name && typeof pop === 'number' && !seen.has(name)) {
+          seen.add(name);
+          sum += pop;
+        }
+      });
+      return seen.size > 0 ? sum : null;
+    })();
+
+    const totalPopulation = siteMunicipalityPopSum ?? safeMunicipalities.reduce(
+      (sum, m) => sum + (m.population || 0),
+      0,
+    );
 
     return {
       totalSites,
       activeSites,
       sitesWithCoords,
       totalCommunities,
-      totalPopulation: safeMunicipalities.reduce((sum, m) => sum + (m.population || 0), 0),
-    }
-  }, [filteredSites, safeMunicipalities])
+      totalPopulation,
+    };
+  }, [filteredSites, safeMunicipalities]);
 
   return (
-    <div className='space-y-6'>
+    <div className="space-y-6">
       {/* Data Loading Status */}
       {isLoadingData && (
         <Card>
-          <CardContent className='pt-4'>
-            <div className='flex items-center gap-3'>
-              <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600'></div>
-              <span className='text-sm text-muted-foreground'>
-                Loading {apiData ? 'updated' : 'map'} data for {mapFilters.performancePeriod}...
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              <span className="text-sm text-muted-foreground">
+                Loading {apiData ? "updated" : "map"} data for{" "}
+                {mapFilters.performancePeriod}...
               </span>
             </div>
           </CardContent>
@@ -481,15 +751,15 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       )}
 
       {dataError && !apiData && (
-        <Card className='border-yellow-200 bg-yellow-50'>
-          <CardContent className='pt-4'>
-            <div className='flex items-center gap-3'>
-              <div className='text-yellow-800 text-sm'>
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="text-yellow-800 text-sm">
                 API unavailable, using demo data: {dataError}
               </div>
               <Button
-                variant='outline'
-                size='sm'
+                variant="outline"
+                size="sm"
                 onClick={() => window.location.reload()}
               >
                 Retry API
@@ -500,50 +770,52 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       )}
 
       {/* Statistics Dashboard */}
-      <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
-          <CardContent className='pt-4'>
-            <div className='flex items-center gap-3'>
-              <MapPin className='w-8 h-8 text-blue-600' />
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <MapPin className="w-8 h-8 text-blue-600" />
               <div>
-                <p className='text-2xl font-bold'>{stats.totalSites}</p>
-                <p className='text-xs text-muted-foreground'>Total Sites</p>
+                <p className="text-2xl font-bold">{stats.totalSites}</p>
+                <p className="text-xs text-muted-foreground">Total Sites</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className='pt-4'>
-            <div className='flex items-center gap-3'>
-              <TrendingUp className='w-8 h-8 text-green-600' />
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-8 h-8 text-green-600" />
               <div>
-                <p className='text-2xl font-bold'>{stats.activeSites}</p>
-                <p className='text-xs text-muted-foreground'>Active Sites</p>
+                <p className="text-2xl font-bold">{stats.activeSites}</p>
+                <p className="text-xs text-muted-foreground">Active Sites</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className='pt-4'>
-            <div className='flex items-center gap-3'>
-              <Building2 className='w-8 h-8 text-purple-600' />
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <Building2 className="w-8 h-8 text-purple-600" />
               <div>
-                <p className='text-2xl font-bold'>{stats.totalCommunities}</p>
-                <p className='text-xs text-muted-foreground'>Communities</p>
+                <p className="text-2xl font-bold">{stats.totalCommunities}</p>
+                <p className="text-xs text-muted-foreground">Communities</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className='pt-4'>
-            <div className='flex items-center gap-3'>
-              <Users className='w-8 h-8 text-orange-600' />
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <Users className="w-8 h-8 text-orange-600" />
               <div>
-                <p className='text-2xl font-bold'>{(stats.totalPopulation / 1000000).toFixed(1)}M</p>
-                <p className='text-xs text-muted-foreground'>Population</p>
+                <p className="text-2xl font-bold">
+                  {(stats.totalPopulation / 1000000).toFixed(1)}M
+                </p>
+                <p className="text-xs text-muted-foreground">Population</p>
               </div>
             </div>
           </CardContent>
@@ -552,10 +824,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
       {/* Map Controls Header */}
       <Card>
-        <CardContent className='pt-4 pb-4'>
-          <div className='flex flex-col gap-4'>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-col gap-4">
             {/* Filters Row */}
-            <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-12 gap-3 items-end'>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-9 gap-3 items-end">
               {/* Layer Control */}
               {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible md:hidden lg:block'>
@@ -605,121 +877,130 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   </DialogContent>
                 </Dialog> 
               </div> */}
-          {/* Search */}
-              <div className='space-y-1 col-span-2'>
-                <Label className='text-xs text-muted-foreground'>Search</Label>
+              {/* Search */}
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs text-muted-foreground">Search</Label>
                 <Input
-                  placeholder='Search sites, communities, operators...'
+                  placeholder="Search sites, communities, operators..."
                   value={searchLocation}
                   onChange={(e) => setSearchLocation(e.target.value)}
-                  className='h-9'
+                  className="h-9"
                 />
               </div>
               {/* Status Filter */}
-              <div className='space-y-1'>
-                <Label className='text-xs text-muted-foreground'>Status</Label>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Status</Label>
                 <Select
                   value={mapFilters.status}
                   onValueChange={(value) =>
                     setMapFilters({ ...mapFilters, status: value })
                   }
                 >
-                  <SelectTrigger className='h-9'>
-                    <SelectValue placeholder='Status' />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Status" />
                   </SelectTrigger>
-                  <SelectContent className='z-100000'>
-                    <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Active'>Active</SelectItem>
-                    <SelectItem value='Inactive'>Inactive</SelectItem>
+                  <SelectContent className="z-100000">
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Inactive">Inactive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Program Filter */}
-              <div className='space-y-1'>
-                <Label className='text-xs text-muted-foreground'>Program</Label>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Program</Label>
                 <Select
-                  value={mapFilters.programs[0] || 'all'}
+                  value={mapFilters.programs[0] || "all"}
                   onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, programs: value === 'all' ? [] : [value] })
+                    setMapFilters({
+                      ...mapFilters,
+                      programs: value === "all" ? [] : [value],
+                    })
                   }
                 >
-                  <SelectTrigger className='h-9'>
-                    <SelectValue placeholder='Program' />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Program" />
                   </SelectTrigger>
-                  <SelectContent className='z-100000'>
-                    <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Paint'>Paint</SelectItem>
-                    <SelectItem value='Lighting'>Lighting</SelectItem>
-                    <SelectItem value='Solvents'>Solvents</SelectItem>
-                    <SelectItem value='Pesticides'>Pesticides</SelectItem>
-                    <SelectItem value='Fertilizers'>Fertilizers</SelectItem>
+                  <SelectContent className="z-100000">
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="Paint">Paint</SelectItem>
+                    <SelectItem value="Lighting">Lighting</SelectItem>
+                    <SelectItem value="Solvents">Solvents</SelectItem>
+                    <SelectItem value="Pesticides">Pesticides</SelectItem>
+                    <SelectItem value="Fertilizers">Fertilizers</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Operator Type Filter */}
-              <div className='space-y-1'>
-                <Label className='text-xs text-muted-foreground'>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">
                   Operator Type
                 </Label>
                 <Select
-                  value={mapFilters.operatorTypes[0] || 'all'}
+                  value={mapFilters.operatorTypes[0] || "all"}
                   onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, operatorTypes: value === 'all' ? [] : [value] })
+                    setMapFilters({
+                      ...mapFilters,
+                      operatorTypes: value === "all" ? [] : [value],
+                    })
                   }
                 >
-                  <SelectTrigger className='h-9'>
-                    <SelectValue placeholder='Operator Type' />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Operator Type" />
                   </SelectTrigger>
-                  <SelectContent className='z-100000'>
-                    <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Retailer'>Retailer</SelectItem>
-                    <SelectItem value='Distributor'>Distributor</SelectItem>
-                    <SelectItem value='Municipal'>Municipal</SelectItem>
-                    <SelectItem value='First Nation/Indigenous'>
+                  <SelectContent className="z-100000">
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="Retailer">Retailer</SelectItem>
+                    <SelectItem value="Distributor">Distributor</SelectItem>
+                    <SelectItem value="Municipal">Municipal</SelectItem>
+                    <SelectItem value="First Nation/Indigenous">
                       First Nation/Indigenous
                     </SelectItem>
-                    <SelectItem value='Private Depot'>Private Depot</SelectItem>
-                    <SelectItem value='Product Care'>Product Care</SelectItem>
-                    <SelectItem value='Regional District'>
+                    <SelectItem value="Private Depot">Private Depot</SelectItem>
+                    <SelectItem value="Product Care">Product Care</SelectItem>
+                    <SelectItem value="Regional District">
                       Regional District
                     </SelectItem>
-                    <SelectItem value='Regional Service Commission'>
+                    <SelectItem value="Regional Service Commission">
                       Regional Service Commission
                     </SelectItem>
-                    <SelectItem value='Other'>Other</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Site Type Filter */}
-              <div className='space-y-1'>
-                <Label className='text-xs text-muted-foreground'>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">
                   Site Type
                 </Label>
                 <Select
-                  value={mapFilters.siteTypes[0] || 'all'}
+                  value={mapFilters.siteTypes[0] || "all"}
                   onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, siteTypes: value === 'all' ? [] : [value] })
+                    setMapFilters({
+                      ...mapFilters,
+                      siteTypes: value === "all" ? [] : [value],
+                    })
                   }
                 >
-                  <SelectTrigger className='h-9'>
-                    <SelectValue placeholder='Site Type' />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Site Type" />
                   </SelectTrigger>
-                  <SelectContent className='z-100000'>
-                    <SelectItem value='all'>All</SelectItem>
-                    <SelectItem value='Collection Site'>
+                  <SelectContent className="z-100000">
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="Collection Site">
                       Collection Site
                     </SelectItem>
-                    <SelectItem value='Event'>Event</SelectItem>
+                    <SelectItem value="Event">Event</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Performance Period Filter */}
-              <div className='space-y-1'>
-                <Label className='text-xs text-muted-foreground'>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">
                   Census Year
                 </Label>
                 <Select
@@ -728,10 +1009,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                     setMapFilters({ ...mapFilters, performancePeriod: value })
                   }
                 >
-                  <SelectTrigger className='h-9'>
-                    <SelectValue placeholder='Year' />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Year" />
                   </SelectTrigger>
-                  <SelectContent className='z-100000'>
+                  <SelectContent className="z-100000">
                     {availableYears.map((year) => (
                       <SelectItem key={year} value={year.toString()}>
                         {year}
@@ -740,9 +1021,9 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   </SelectContent>
                 </Select>
               </div>
-{/* Community Filter */}
-              <div className='space-y-1'>
-                <Label className='text-xs text-muted-foreground'>
+              {/* Community Filter */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">
                   Community
                 </Label>
                 <Select
@@ -751,22 +1032,22 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                     setMapFilters({ ...mapFilters, municipality: value })
                   }
                 >
-                  <SelectTrigger className='h-9'>
-                    <SelectValue placeholder='Community' />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Community" />
                   </SelectTrigger>
-                  <SelectContent className='z-100000'>
-                    <SelectItem value='all'>All</SelectItem>
+                  <SelectContent className="z-100000">
+                    <SelectItem value="all">All</SelectItem>
                     {communitiesDropdown?.communities?.map((community) => (
-                      <SelectItem
-                        key={community.id}
-                        value={community.name}
-                      >
+                      <SelectItem key={community.id} value={community.name}>
                         {community.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+            
+                <Button variant="outline">Export</Button>
+           
               {/* Advanced Filters Toggle */}
               {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible'>
@@ -816,8 +1097,6 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </Button>
               </div> */}
 
-    
-
               {/* Export */}
               {/* <div className='space-y-1'>
                 <Label className='text-xs text-muted-foreground invisible'>
@@ -833,22 +1112,24 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
             {/* Advanced Filters */}
             {showAdvancedFilters && (
               <>
-                <Separator className='my-4' />
-                <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
+                <Separator className="my-4" />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {/* Tier Filter */}
-                  <div className='space-y-1'>
-                    <Label className='text-xs text-muted-foreground'>Tier</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Tier
+                    </Label>
                     <Select
                       value={mapFilters.tier}
                       onValueChange={(value) =>
                         setMapFilters({ ...mapFilters, tier: value })
                       }
                     >
-                      <SelectTrigger className='h-9'>
-                        <SelectValue placeholder='Tier' />
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Tier" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value='all'>All Tiers</SelectItem>
+                        <SelectItem value="all">All Tiers</SelectItem>
                         {uniqueTiers.map((tier) => (
                           <SelectItem key={tier} value={tier}>
                             {tier} Tier
@@ -859,48 +1140,62 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   </div>
 
                   {/* Population Range */}
-                  <div className='space-y-1'>
-                    <Label className='text-xs text-muted-foreground'>Min Population</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Min Population
+                    </Label>
                     <Input
-                      type='number'
-                      placeholder='0'
+                      type="number"
+                      placeholder="0"
                       value={mapFilters.minPopulation}
                       onChange={(e) =>
-                        setMapFilters({ ...mapFilters, minPopulation: e.target.value })
+                        setMapFilters({
+                          ...mapFilters,
+                          minPopulation: e.target.value,
+                        })
                       }
-                      className='h-9'
+                      className="h-9"
                     />
                   </div>
 
-                  <div className='space-y-1'>
-                    <Label className='text-xs text-muted-foreground'>Max Population</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Max Population
+                    </Label>
                     <Input
-                      type='number'
-                      placeholder='10000000'
+                      type="number"
+                      placeholder="10000000"
                       value={mapFilters.maxPopulation}
                       onChange={(e) =>
-                        setMapFilters({ ...mapFilters, maxPopulation: e.target.value })
+                        setMapFilters({
+                          ...mapFilters,
+                          maxPopulation: e.target.value,
+                        })
                       }
-                      className='h-9'
+                      className="h-9"
                     />
                   </div>
 
                   {/* Coordinates Filter */}
-                  <div className='space-y-1'>
-                    <Label className='text-xs text-muted-foreground'>Coordinates</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Coordinates
+                    </Label>
                     <Select
                       value={mapFilters.hasCoordinates}
                       onValueChange={(value) =>
                         setMapFilters({ ...mapFilters, hasCoordinates: value })
                       }
                     >
-                      <SelectTrigger className='h-9'>
-                        <SelectValue placeholder='Coordinates' />
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Coordinates" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value='all'>All Sites</SelectItem>
-                        <SelectItem value='with'>With Coordinates</SelectItem>
-                        <SelectItem value='without'>Without Coordinates</SelectItem>
+                        <SelectItem value="all">All Sites</SelectItem>
+                        <SelectItem value="with">With Coordinates</SelectItem>
+                        <SelectItem value="without">
+                          Without Coordinates
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -912,20 +1207,20 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       </Card>
 
       {/* Main Map Container */}
-      <div className='grid grid-cols-1 2xl:grid-cols-4 gap-4 2xl:gap-6'>
+      <div className="grid grid-cols-1 2xl:grid-cols-4 gap-4 2xl:gap-6">
         {/* Map Display */}
-        <div className='2xl:col-span-3 order-2 2xl:order-1'>
+        <div className="2xl:col-span-3 order-2 2xl:order-1">
           <Card>
             <CardContent
-              className='p-0 relative'
-              style={{ zIndex: 1, isolation: 'isolate' }}
+              className="p-0 relative"
+              style={{ zIndex: 1, isolation: "isolate" }}
             >
               <Suspense
                 fallback={
-                  <div className='h-[600px] flex items-center justify-center'>
-                    <div className='text-center'>
-                      <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4'></div>
-                      <p className='text-gray-600'>Loading map...</p>
+                  <div className="h-[600px] flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-gray-600">Loading map...</p>
                     </div>
                   </div>
                 }
@@ -934,36 +1229,44 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   sites={filteredSites}
                   municipalities={safeMunicipalities}
                   onSiteClick={handleSiteClick}
+                  onPolygonCreate={handlePolygonCreate}
+                  onMapCommunityClick={handleMapCommunityClick}
                   filters={mapFilters}
+                  mapCommunities={mapCommunitiesList}
                   // layers={mapLayers}
                 />
               </Suspense>
 
               {/* Loading Overlay */}
               {(isMapLoading || isLoadingData) && (
-                <div className='absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-[500] rounded-lg'>
-                  <Card className='w-80'>
-                    <CardContent className='pt-6'>
-                      <div className='text-center space-y-4'>
-                        <div className='animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto'></div>
+                <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-[500] rounded-lg">
+                  <Card className="w-80">
+                    <CardContent className="pt-6">
+                      <div className="text-center space-y-4">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto"></div>
                         <div>
-                          <h3 className='font-semibold text-lg mb-2'>
-                            {isLoadingData ? 'Loading Census Data' : 'Loading Map'}
+                          <h3 className="font-semibold text-lg mb-2">
+                            {isLoadingData
+                              ? "Loading Census Data"
+                              : "Loading Map"}
                           </h3>
-                          <p className='text-sm text-gray-600'>
+                          <p className="text-sm text-gray-600">
                             {isLoadingData
                               ? `Loading data for ${mapFilters.performancePeriod} census year...`
-                              : 'Initializing OpenStreetMap'
-                            }
+                              : "Initializing OpenStreetMap"}
                           </p>
-                          <p className='text-xs text-gray-500 mt-2'>
-                            {apiData ? `Found ${apiData.sites.length} sites and ${apiData.municipalities.length} communities` : 'Using demo data'}
+                          <p className="text-xs text-gray-500 mt-2">
+                            {apiData
+                              ? `Found ${apiData.sites.length} sites, ${apiData.municipalities.length} census communities, ${mapCommunitiesList.length} map boundaries`
+                              : "Using demo data"}
                           </p>
                         </div>
-                        <div className='flex items-center justify-center gap-2 text-xs text-gray-500'>
-                          <div className='w-2 h-2 bg-blue-500 rounded-full animate-pulse'></div>
+                        <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                           <span>
-                            {isLoadingData ? 'Fetching from server' : 'Initializing OpenStreetMap'}
+                            {isLoadingData
+                              ? "Fetching from server"
+                              : "Initializing OpenStreetMap"}
                           </span>
                         </div>
                       </div>
@@ -973,16 +1276,16 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               )}
 
               {/* Map Legend Overlay */}
-              <div className='absolute bottom-4 left-4 bg-white p-2 rounded-lg shadow-lg z-[1000] max-w-xs text-xs'>
-                <div className='text-xs font-semibold mb-2'>
+              <div className="absolute bottom-4 left-4 bg-white p-2 rounded-lg shadow-lg z-[1000] max-w-xs text-xs">
+                <div className="text-xs font-semibold mb-2">
                   Legend – Operator Types
                 </div>
-                <div className='space-y-1'>
+                <div className="space-y-1">
                   {uniqueOperatorTypes.length > 0 ? (
                     uniqueOperatorTypes.map((operatorType) => (
                       <div
                         key={operatorType}
-                        className='flex items-center gap-1.5 text-xs cursor-pointer hover:bg-gray-50 p-0.5 rounded transition-colors'
+                        className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-gray-50 p-0.5 rounded transition-colors"
                         onClick={() => handleLegendClick(operatorType)}
                       >
                         <div
@@ -991,44 +1294,45 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                             backgroundColor: getOperatorTypeColor(operatorType),
                           }}
                         ></div>
-                        <span className='truncate'>{operatorType}</span>
+                        <span className="truncate">{operatorType}</span>
                       </div>
                     ))
                   ) : (
-                    <div className='text-xs text-gray-500'>
+                    <div className="text-xs text-gray-500">
                       No operator types available
                     </div>
                   )}
                 </div>
-                <Separator className='my-1.5' />
-                <div className='space-y-0.5 text-xs'>
-                  <div className='flex items-center gap-1.5'>
-                    <div className='w-1.5 h-1.5 bg-green-500 rounded-full'></div>
+                <Separator className="my-1.5" />
+                <div className="space-y-0.5 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                     <span>
-                      Active:{' '}
+                      Active:{" "}
                       {
-                        filteredSites.filter((s) => s.status === 'Active')
+                        filteredSites.filter((s) => s.status === "Active")
                           .length
                       }
                     </span>
                   </div>
-                  <div className='flex items-center gap-1.5'>
-                    <div className='w-1.5 h-1.5 bg-yellow-500 rounded-full'></div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
                     <span>
-                      Scheduled:{' '}
+                      Scheduled:{" "}
                       {
-                        filteredSites.filter((s) => s.status === 'Scheduled')
+                        filteredSites.filter((s) => s.status === "Scheduled")
                           .length
                       }
                     </span>
                   </div>
-                  <div className='flex items-center gap-1.5'>
-                    <div className='w-1.5 h-1.5 bg-red-500 rounded-full'></div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
                     <span>
-                      Inactive:{' '}
+                      Inactive:{" "}
                       {
-                        filteredSites.filter((s: CollectionSite) => s.status === 'Inactive')
-                          .length
+                        filteredSites.filter(
+                          (s: CollectionSite) => s.status === "Inactive",
+                        ).length
                       }
                     </span>
                   </div>
@@ -1039,9 +1343,9 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         </div>
 
         {/* Side Panel */}
-        <div className='space-y-4 order-1 2xl:order-2'>
+        <div className="space-y-4 order-1 2xl:order-2">
           {/* Census Year Info */}
-          {apiData && (
+          {/* {apiData && (
             <Card>
               <CardHeader>
                 <CardTitle className='text-lg flex items-center gap-2'>
@@ -1053,74 +1357,79 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </CardDescription>
               </CardHeader>
             </Card>
-          )}
+          )} */}
 
           {/* Site Information Panel */}
           <Card>
             <CardHeader>
-              <CardTitle className='text-lg flex items-center gap-2'>
-                <MapPin className='w-5 h-5' />
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MapPin className="w-5 h-5" />
                 Collection Sites
               </CardTitle>
               <CardDescription>
-                {filteredSites.length} sites visible {isLoadingData && '(loading...)'}
+                {filteredSites.length} sites visible{" "}
+                {isLoadingData && "(loading...)"}
                 {filteredSites.length !== stats.totalSites && (
-                  <span className='text-blue-600 ml-1'>
+                  <span className="text-blue-600 ml-1">
                     (filtered from {stats.totalSites})
                   </span>
                 )}
               </CardDescription>
             </CardHeader>
-            <CardContent className='space-y-4 max-h-96 overflow-y-auto'>
+            <CardContent className="space-y-4 max-h-96 overflow-y-auto">
               {filteredSites.length === 0 ? (
-                <div className='text-center py-8 text-gray-500'>
+                <div className="text-center py-8 text-gray-500">
                   <p>No sites match current filters</p>
-                  <p className='text-sm'>
-                    {isLoadingData ? 'Data is still loading...' : 'Try adjusting your filters'}
+                  <p className="text-sm">
+                    {isLoadingData
+                      ? "Data is still loading..."
+                      : "Try adjusting your filters"}
                   </p>
                 </div>
               ) : (
                 filteredSites.slice(0, 8).map((site: CollectionSite) => (
                   <div
                     key={site.id}
-                    className='border rounded-lg p-3 space-y-2 hover:bg-gray-50 cursor-pointer transition-colors'
+                    className="border rounded-lg p-3 space-y-2 hover:bg-gray-50 cursor-pointer transition-colors"
                     onClick={() => handleSiteClick(site)}
                   >
-                    <div className='flex items-start justify-between'>
-                      <div className='flex-1'>
-                        <h4 className='font-medium text-sm'>{site.name}</h4>
-                        <p className='text-xs text-gray-600'>{site.address}</p>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-sm">{site.name}</h4>
+                        <p className="text-xs text-gray-600">{site.address}</p>
                       </div>
                       <Badge
-                        className={`${getStatusColor(site.status || '')} text-white border-0`}
+                        className={`${getStatusColor(site.status || "")} text-white border-0`}
                       >
                         {site.status}
                       </Badge>
                     </div>
-                    <div className='flex flex-wrap gap-1'>
+                    <div className="flex flex-wrap gap-1">
                       <Badge
-                        className='text-white border-0 text-xs'
+                        className="text-white border-0 text-xs"
                         style={{
                           backgroundColor: getOperatorTypeColor(
-                            site.operator_type || '',
+                            site.operator_type || "",
                           ),
                         }}
                       >
                         {site.operator_type}
                       </Badge>
                       {Array.isArray(site.programs) &&
-                        site.programs.slice(0, 2).map((prog: string, index: number) => (
-                          <Badge
-                            key={`${prog}-${index}`}
-                            variant='secondary'
-                            className='text-xs'
-                          >
-                            {prog}
-                          </Badge>
-                        ))}
+                        site.programs
+                          .slice(0, 2)
+                          .map((prog: string, index: number) => (
+                            <Badge
+                              key={`${prog}-${index}`}
+                              variant="secondary"
+                              className="text-xs"
+                            >
+                              {prog}
+                            </Badge>
+                          ))}
                       {Array.isArray(site.programs) &&
                         site.programs.length > 2 && (
-                          <Badge variant='secondary' className='text-xs'>
+                          <Badge variant="secondary" className="text-xs">
                             +{site.programs.length - 2}
                           </Badge>
                         )}
@@ -1129,7 +1438,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 ))
               )}
               {filteredSites.length > 8 && (
-                <div className='text-center text-sm text-gray-500 py-2'>
+                <div className="text-center text-sm text-gray-500 py-2">
                   ... and {filteredSites.length - 8} more sites
                 </div>
               )}
@@ -1137,7 +1446,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
           </Card>
 
           {/* Community Information Panel */}
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle className='text-lg'>Communities</CardTitle>
               <CardDescription>
@@ -1173,42 +1482,42 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
       </div>
 
       {/* Feature Popup Dialog */}
       <Dialog open={showPopup} onOpenChange={setShowPopup}>
-        <DialogContent className='w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto'>
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Collection Site Details</DialogTitle>
           </DialogHeader>
           {selectedSite && (
-            <div className='space-y-4'>
+            <div className="space-y-4">
               <div>
-                <h3 className='font-semibold text-lg'>{selectedSite.name}</h3>
-                <p className='text-sm text-gray-600'>{selectedSite.address}</p>
+                <h3 className="font-semibold text-lg">{selectedSite.name}</h3>
+                <p className="text-sm text-gray-600">{selectedSite.address}</p>
               </div>
               <Separator />
-              <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-                <div className='space-y-2'>
-                  <Label className='text-sm font-medium'>Status</Label>
-                  <div className='flex flex-wrap gap-2'>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Status</Label>
+                  <div className="flex flex-wrap gap-2">
                     <Badge
-                      className={`${getStatusColor(selectedSite.status || '')} text-white border-0`}
+                      className={`${getStatusColor(selectedSite.status || "")} text-white border-0`}
                     >
                       {selectedSite.status}
                     </Badge>
                   </div>
                 </div>
-                <div className='space-y-2'>
-                  <Label className='text-sm font-medium'>Operator Type</Label>
-                  <div className='flex flex-wrap gap-2'>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Operator Type</Label>
+                  <div className="flex flex-wrap gap-2">
                     <Badge
-                      className='text-white border-0'
+                      className="text-white border-0"
                       style={{
                         backgroundColor: getOperatorTypeColor(
-                          selectedSite.operator_type || '',
+                          selectedSite.operator_type || "",
                         ),
                       }}
                     >
@@ -1216,50 +1525,50 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                     </Badge>
                   </div>
                 </div>
-                <div className='space-y-2'>
-                  <Label className='text-sm font-medium'>Community</Label>
-                  <p className='text-sm'>
-                    {selectedSite.municipality?.name || 'Unknown'}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Community</Label>
+                  <p className="text-sm">
+                    {selectedSite.municipality?.name || "Unknown"}
                   </p>
                 </div>
-                <div className='space-y-2'>
-                  <Label className='text-sm font-medium'>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
                     Population Served
                   </Label>
-                  <p className='text-sm'>
+                  <p className="text-sm">
                     {(selectedSite.population_served || 0).toLocaleString()}
                   </p>
                 </div>
-                <div className='space-y-2'>
-                  <Label className='text-sm font-medium'>Coordinates</Label>
-                  <p className='text-sm text-gray-600'>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Coordinates</Label>
+                  <p className="text-sm text-gray-600">
                     {selectedSite.latitude != null &&
                     selectedSite.longitude != null
-                      ? `${Number(selectedSite.latitude).toFixed(4)}, ${Number(selectedSite.longitude).toFixed(4)}` 
-                      : 'N/A'}
+                      ? `${Number(selectedSite.latitude).toFixed(4)}, ${Number(selectedSite.longitude).toFixed(4)}`
+                      : "N/A"}
                   </p>
                 </div>
-                <div className='space-y-2'>
-                  <Label className='text-sm font-medium'>Created</Label>
-                  <p className='text-sm text-gray-600'>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Created</Label>
+                  <p className="text-sm text-gray-600">
                     {selectedSite.created_at
                       ? new Date(selectedSite.created_at).toLocaleDateString()
-                      : 'N/A'}
+                      : "N/A"}
                   </p>
                 </div>
               </div>
-              <div className='space-y-2'>
-                <Label className='text-sm font-medium'>Programs</Label>
-                <div className='flex flex-wrap gap-2'>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Programs</Label>
+                <div className="flex flex-wrap gap-2">
                   {Array.isArray(selectedSite.programs) &&
                     selectedSite.programs.map((program, index) => (
-                      <Badge key={index} variant='secondary'>
+                      <Badge key={index} variant="secondary">
                         {program}
                       </Badge>
                     ))}
                   {(!selectedSite.programs ||
                     selectedSite.programs.length === 0) && (
-                    <span className='text-sm text-gray-500'>
+                    <span className="text-sm text-gray-500">
                       No programs assigned
                     </span>
                   )}
@@ -1270,28 +1579,277 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={saveMapCommunityOpen}
+        onOpenChange={(open) => {
+          setSaveMapCommunityOpen(open);
+          if (!open) {
+            setPendingMapBoundary(null);
+            setSelectedCreateCommunityId("");
+            setSaveCommunitySearch("");
+          }
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Save map community</DialogTitle>
+            <DialogDescription>
+              Choose a community by <strong>id</strong> (from{" "}
+              <code className="text-xs">
+                GET /api/community/map-communities/available/
+              </code>
+              ), then POST{" "}
+              <code className="text-xs">{"{ community_id, boundary }"}</code> to{" "}
+              <code className="text-xs">/api/community/map-communities/</code>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 flex-1 min-h-0 flex flex-col">
+            <div className="space-y-1">
+              <Label htmlFor="save-community-search">Search communities</Label>
+              <Input
+                id="save-community-search"
+                value={saveCommunitySearch}
+                onChange={(e) => setSaveCommunitySearch(e.target.value)}
+                placeholder="e.g. Toronto, Tor"
+              />
+            </div>
+            {saveAvailableLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <ScrollArea className="h-[min(280px,40vh)] rounded-md border p-2">
+                <div className="space-y-2 pr-3">
+                  {(saveAvailableData?.communities ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground px-1">
+                      No matches. Try another search.
+                    </p>
+                  ) : (
+                    (saveAvailableData?.communities ?? []).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedCreateCommunityId(c.id)}
+                        className={`w-full text-left rounded-md border px-2 py-2 text-sm transition-colors hover:bg-muted ${
+                          selectedCreateCommunityId === c.id
+                            ? "border-primary bg-muted"
+                            : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-medium truncate">{c.name}</span>
+                          {c.has_boundary ? (
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px]"
+                            >
+                              has boundary
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <div className="font-mono text-[11px] text-muted-foreground break-all">
+                          {c.id}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+            {selectedCreateCommunityId ? (
+              <p className="text-xs text-muted-foreground font-mono break-all">
+                Selected: {selectedCreateCommunityId}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSkipSaveMapCommunity}
+            >
+              Skip
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleSaveMapCommunity()}
+              disabled={
+                createMapCommunityMutation.isPending ||
+                !selectedCreateCommunityId
+              }
+            >
+              {createMapCommunityMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editMapCommunityOpen}
+        onOpenChange={(open) => {
+          setEditMapCommunityOpen(open);
+          if (!open) {
+            setEditingMapCommunity(null);
+            setDeleteMapCommunityOpen(false);
+            setSelectedEditCommunityId("");
+            setEditCommunitySearch("");
+          }
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Edit map community</DialogTitle>
+            <DialogDescription>
+              Map record id (DELETE/PATCH URL):{" "}
+              <code className="text-xs break-all">
+                {editingMapCommunity?.id ?? "—"}
+              </code>
+              . Search below to set{" "}
+              <code className="text-xs">community_id</code> (and name) in the
+              PATCH body.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 flex-1 min-h-0 flex flex-col">
+            <div className="space-y-1">
+              <Label htmlFor="edit-community-search">Search communities</Label>
+              <Input
+                id="edit-community-search"
+                value={editCommunitySearch}
+                onChange={(e) => setEditCommunitySearch(e.target.value)}
+                placeholder="Filter by name…"
+              />
+            </div>
+            {editAvailableLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <ScrollArea className="h-[min(280px,40vh)] rounded-md border p-2">
+                <div className="space-y-2 pr-3">
+                  {(editAvailableData?.communities ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground px-1">
+                      No matches. Try another search.
+                    </p>
+                  ) : (
+                    (editAvailableData?.communities ?? []).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedEditCommunityId(c.id)}
+                        className={`w-full text-left rounded-md border px-2 py-2 text-sm transition-colors hover:bg-muted ${
+                          selectedEditCommunityId === c.id
+                            ? "border-primary bg-muted"
+                            : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-medium truncate">{c.name}</span>
+                          {c.has_boundary ? (
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px]"
+                            >
+                              has boundary
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <div className="font-mono text-[11px] text-muted-foreground break-all">
+                          {c.id}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+            {selectedEditCommunityId ? (
+              <p className="text-xs text-muted-foreground font-mono break-all">
+                PATCH body community_id: {selectedEditCommunityId}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            <Button
+              type="button"
+              variant="destructive"
+              className="sm:mr-auto"
+              onClick={() => setDeleteMapCommunityOpen(true)}
+              disabled={deleteMapCommunityMutation.isPending}
+            >
+              Delete…
+            </Button>
+            <div className="flex gap-2 sm:ml-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditMapCommunityOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleUpdateMapCommunity()}
+                disabled={
+                  updateMapCommunityMutation.isPending ||
+                  !selectedEditCommunityId
+                }
+              >
+                {updateMapCommunityMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteMapCommunityOpen}
+        onOpenChange={setDeleteMapCommunityOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete map community?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This sends DELETE to{" "}
+              <code className="text-xs">
+                /api/community/map-communities/
+                {editingMapCommunity?.id ?? ""}/
+              </code>
+              . This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleConfirmDeleteMapCommunity()}
+              disabled={deleteMapCommunityMutation.isPending}
+            >
+              {deleteMapCommunityMutation.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Legend Info Dialog */}
       <Dialog open={showLegendInfo} onOpenChange={setShowLegendInfo}>
-        <DialogContent className='w-[95vw] max-w-xl'>
+        <DialogContent className="w-[95vw] max-w-xl">
           <DialogHeader>
             <DialogTitle>{selectedLegendType} Sites</DialogTitle>
           </DialogHeader>
           {selectedLegendType && (
-            <div className='space-y-4'>
-              <div className='grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg'>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
                 <div>
-                  <Label className='text-sm font-medium'>Total Sites</Label>
-                  <p className='text-2xl font-bold'>
+                  <Label className="text-sm font-medium">Total Sites</Label>
+                  <p className="text-2xl font-bold">
                     {
                       filteredSites.filter(
-                        (s: CollectionSite) => s.operator_type === selectedLegendType,
+                        (s: CollectionSite) =>
+                          s.operator_type === selectedLegendType,
                       ).length
                     }
                   </p>
                 </div>
                 <div>
-                  <Label className='text-sm font-medium'>On Map</Label>
-                  <p className='text-2xl font-bold text-blue-600'>
+                  <Label className="text-sm font-medium">On Map</Label>
+                  <p className="text-2xl font-bold text-blue-600">
                     {
                       filteredSites.filter(
                         (s: CollectionSite) =>
@@ -1305,32 +1863,35 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               </div>
 
               <div>
-                <Label className='text-sm font-medium mb-2 block'>
+                <Label className="text-sm font-medium mb-2 block">
                   Sites List
                 </Label>
-                <div className='max-h-96 overflow-y-auto space-y-2'>
+                <div className="max-h-96 overflow-y-auto space-y-2">
                   {filteredSites
-                    .filter((s: CollectionSite) => s.operator_type === selectedLegendType)
+                    .filter(
+                      (s: CollectionSite) =>
+                        s.operator_type === selectedLegendType,
+                    )
                     .slice(0, 10)
                     .map((site: CollectionSite) => (
                       <div
                         key={site.id}
-                        className='border rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors'
+                        className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors"
                         onClick={() => {
-                          setSelectedSite(site)
-                          setShowLegendInfo(false)
-                          setShowPopup(true)
+                          setSelectedSite(site);
+                          setShowLegendInfo(false);
+                          setShowPopup(true);
                         }}
                       >
-                        <div className='flex items-start justify-between'>
-                          <div className='flex-1'>
-                            <h4 className='font-medium text-sm'>{site.name}</h4>
-                            <p className='text-xs text-gray-600'>
-                              {site.municipality?.name || 'Unknown'}
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-sm">{site.name}</h4>
+                            <p className="text-xs text-gray-600">
+                              {site.municipality?.name || "Unknown"}
                             </p>
                           </div>
                           <Badge
-                            className={`${getStatusColor(site.status || '')} text-white border-0`}
+                            className={`${getStatusColor(site.status || "")} text-white border-0`}
                           >
                             {site.status}
                           </Badge>
@@ -1341,17 +1902,18 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 {filteredSites.filter(
                   (s: CollectionSite) => s.operator_type === selectedLegendType,
                 ).length > 10 && (
-                  <p className='text-sm text-gray-500 text-center mt-2'>
-                    ... and{' '}
+                  <p className="text-sm text-gray-500 text-center mt-2">
+                    ... and{" "}
                     {filteredSites.filter(
-                      (s: CollectionSite) => s.operator_type === selectedLegendType,
-                    ).length - 10}{' '}
+                      (s: CollectionSite) =>
+                        s.operator_type === selectedLegendType,
+                    ).length - 10}{" "}
                     more sites
                   </p>
                 )}
               </div>
 
-              <div className='text-sm text-gray-600 bg-blue-50 p-3 rounded-lg'>
+              <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
                 <strong>Tip:</strong> Click on any site above or on the map
                 markers to see detailed information.
               </div>
@@ -1360,5 +1922,5 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

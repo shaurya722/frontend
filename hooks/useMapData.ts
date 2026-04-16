@@ -45,6 +45,7 @@ interface MapFilters {
   minPopulation: string
   maxPopulation: string
   hasCoordinates: string
+  search?: string
   page?: number
   limit?: number
   municipalities_page?: number
@@ -73,6 +74,9 @@ export const useMapData = (filters: MapFilters) => {
       }
       if (filters.page) {
         apiUrl.searchParams.set('page', filters.page.toString())
+      }
+      if (filters.search && filters.search.trim().length > 0) {
+        apiUrl.searchParams.set('search', filters.search)
       }
       if (filters.limit) {
         apiUrl.searchParams.set('limit', filters.limit.toString())

@@ -398,9 +398,9 @@ export default function ToolBEventApplication() {
                       <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50">
                         Community
                       </TableHead>
-                      <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
+                      {/* <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
                         Shortfall
-                      </TableHead>
+                      </TableHead> */}
                       <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
                         Events Available
                       </TableHead>
@@ -418,7 +418,7 @@ export default function ToolBEventApplication() {
                         <TableCell className="font-medium">
                           {community.name}
                         </TableCell>
-                        <TableCell className="text-right">
+                        {/* <TableCell className="text-right">
                           <Badge
                             variant={
                               community.shortfall > 0
@@ -428,7 +428,7 @@ export default function ToolBEventApplication() {
                           >
                             {community.shortfall}
                           </Badge>
-                        </TableCell>
+                        </TableCell> */}
                         <TableCell className="text-right">
                           {community.eventsCount}
                         </TableCell>
@@ -444,7 +444,9 @@ export default function ToolBEventApplication() {
                           <Button
                             size="sm"
                             onClick={() => handleOpenEventDialog(community)}
-                            disabled={community.eventsCount === 0}
+                            // disabled={community.events.some(
+                            //   (event) => event.is_active === false
+                            // )}
                           >
                             Edit Events
                           </Button>

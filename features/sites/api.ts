@@ -7,6 +7,7 @@ export const fetchSites = async (filters: SitesFilters = {}): Promise<PaginatedS
   if (filters.search) queryParams.append("search", filters.search);
   if (filters.status) queryParams.append("status", filters.status);
   if (filters.site_type) queryParams.append("site_type", filters.site_type);
+  if (filters.operator_type) queryParams.append("operator_type", filters.operator_type);
   if (filters.residential !== undefined) queryParams.append("residential", filters.residential.toString());
   if (filters.sort) queryParams.append("sort", filters.sort);
   if (filters.year !== undefined) queryParams.append("year", filters.year.toString());

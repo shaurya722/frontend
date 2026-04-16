@@ -149,12 +149,31 @@ const buildProgramPayload = (siteData: CollectionSite) => {
   }
 }
 
+const buildMaterialsSectorsPayload = (siteData: CollectionSite) => {
+  const hasMaterial = (label: string) => siteData.materials_collected?.includes(label)
+  const hasSector = (label: string) => siteData.collection_scope?.includes(label)
+
+  return {
+    material_paint: !!hasMaterial('Paint'),
+    material_light_bulbs: !!hasMaterial('Light bulbs'),
+    material_batteries: !!hasMaterial('Batteries'),
+    material_oil_filters: !!hasMaterial('Oil filters'),
+    material_tires: !!hasMaterial('Tires'),
+    material_electronics: !!hasMaterial('Electronics'),
+    material_household_hazardous_waste: !!hasMaterial('Household hazardous waste'),
+    sector_residential: !!hasSector('Residential'),
+    sector_commercial: !!hasSector('Commercial'),
+    sector_industrial: !!hasSector('Industrial'),
+    sector_institutional: !!hasSector('Institutional'),
+  }
+}
+
 export default function SiteManagement() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [siteType, setSiteType] = useState<string>('')
-  const [operatorType, setOperatorType] = useState<string>('')
+  const [operatorType, setOperatorType] = useState<string>('all')
   const [year, setYear] = useState<number | undefined>(undefined)
   const [page, setPage] = useState(1)
   const limit = 10
@@ -208,7 +227,8 @@ export default function SiteManagement() {
     // Cast to any to align with API expectations if it accepts string values
     is_active: selectedStatus !== 'all' ? (selectedStatus as any) : undefined,
     site_type: siteType || undefined,
-    operator_type: operatorType || undefined,
+    // Normalize operator type: do not send 'all' to API
+    operator_type: operatorType && operatorType !== 'all' ? operatorType : undefined,
     year,
     page,
     limit,
@@ -225,9 +245,9 @@ export default function SiteManagement() {
   const importSiteMutation = useImportSiteCensusData()
   const exportSiteMutation = useExportSiteCensusData()
 
-  const totalSites = data?.count || 0
-  const activeSites = data?.results.filter(site => site.is_active).length || 0
-  const inactiveSites = totalSites - activeSites
+  const totalSites = (data as any)?.counts?.total_sites ?? data?.count ?? 0
+  const activeSites = (data as any)?.counts?.active_sites ?? (data?.results.filter(site => site.is_active).length || 0)
+  const inactiveSites = (data as any)?.counts?.inactive_sites ?? (totalSites - activeSites)
   const scheduledSites = data?.results.filter(site => site.site_start_date && new Date(site.site_start_date) > new Date()).length || 0
   const hasNext = Boolean(data?.next)
   const hasPrev = Boolean(data?.previous)
@@ -260,8 +280,21 @@ export default function SiteManagement() {
         site_end_date: toDateInputValue(siteData.site_end_date),
         programs: [],
         programSchedules,
-        materials_collected: [], // Map from site data
-        collection_scope: [], // Map from site data
+        materials_collected: [
+          ...(siteData.material_paint ? ['Paint'] : []),
+          ...(siteData.material_light_bulbs ? ['Light bulbs'] : []),
+          ...(siteData.material_batteries ? ['Batteries'] : []),
+          ...(siteData.material_oil_filters ? ['Oil filters'] : []),
+          ...(siteData.material_tires ? ['Tires'] : []),
+          ...(siteData.material_electronics ? ['Electronics'] : []),
+          ...(siteData.material_household_hazardous_waste ? ['Household hazardous waste'] : []),
+        ],
+        collection_scope: [
+          ...(siteData.sector_residential ? ['Residential'] : []),
+          ...(siteData.sector_commercial ? ['Commercial'] : []),
+          ...(siteData.sector_industrial ? ['Industrial'] : []),
+          ...(siteData.sector_institutional ? ['Institutional'] : []),
+        ],
       }
 
       // Map programs
@@ -305,6 +338,20 @@ export default function SiteManagement() {
   const handleSiteSubmit = async (siteData: CollectionSite) => {
     console.log('handleSiteSubmit called with:', siteData)
     try {
+      // Cross-field validation: require at least one selection across
+      // Programs & Scheduling, Materials Collected/Services, or Collection Sector
+      const hasAnySelection =
+        (siteData.programs && siteData.programs.length > 0) ||
+        (siteData.materials_collected && siteData.materials_collected.length > 0) ||
+        (siteData.collection_scope && siteData.collection_scope.length > 0)
+
+      if (!hasAnySelection) {
+        setErrorMessage(
+          'Please select at least one item in Programs & Scheduling, Materials Collected/Services, or Collection Sector.'
+        )
+        return
+      }
+
       const basePayload = {
         site_name: siteData.name,
         census_year: siteData.census_year,
@@ -328,12 +375,14 @@ export default function SiteManagement() {
       }
 
       const programPayload = buildProgramPayload(siteData)
+      const materialsSectorsPayload = buildMaterialsSectorsPayload(siteData)
 
       if (dialogMode === 'add') {
         // Transform the data to match API expectations
         const apiData = {
           ...basePayload,
           ...programPayload,
+          ...materialsSectorsPayload,
         }
 
         console.log('Transformed API data:', apiData)
@@ -347,6 +396,7 @@ export default function SiteManagement() {
         const apiData = {
           ...basePayload,
           ...programPayload,
+          ...materialsSectorsPayload,
         }
 
         console.log('Transformed update API data:', apiData)
@@ -743,7 +793,7 @@ export default function SiteManagement() {
       </Card>
 
       {/* Site Statistics */}
-      <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+      <div className='grid grid-cols-3 md:grid-cols-3 sm:grid-cols-1 xs:grid-cols-1 gap-4'>
         <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>Total Sites</CardTitle>
@@ -766,7 +816,7 @@ export default function SiteManagement() {
           </CardContent>
         </Card>
 
-        <Card>
+        {/* <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>Scheduled</CardTitle>
             <Calendar className='h-4 w-4 text-blue-600' />
@@ -775,7 +825,7 @@ export default function SiteManagement() {
             <div className='text-2xl font-bold text-blue-600'>{scheduledSites}</div>
             <p className='text-xs text-muted-foreground'>Future activation</p>
           </CardContent>
-        </Card>
+        </Card> */}
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
