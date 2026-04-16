@@ -101,6 +101,18 @@ export interface AdjacentShortfallUi {
   reallocation_id?: string
 }
 
+export interface AllocationRecordUi {
+  id: string
+  siteCensusId: number
+  siteName?: string
+  fromCommunity?: string
+  fromCommunityId?: string
+  toCommunity?: string
+  toCommunityId?: string
+  reallocatedAt?: string
+  reason?: string
+}
+
 export interface AdjacentCommunityUi {
   id: string
   name: string
@@ -117,6 +129,8 @@ export interface AdjacentCommunityUi {
   totalAllocatedIn: number
   allocatedOutCount: number
   allocatedInCount: number
+  allocatedOut: AllocationRecordUi[]
+  allocatedIn: AllocationRecordUi[]
 }
 
 export interface AdjacentAllocationsSummary {

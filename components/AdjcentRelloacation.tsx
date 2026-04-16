@@ -412,26 +412,29 @@ export default function AdjacentReallocation() {
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[140px]">Community</TableHead>
-                <TableHead className="min-w-[200px] max-w-[320px]">
-                  Adjacent communities
+                <TableHead className="min-w-[80px] text-center">
+                  Eligible Excess
                 </TableHead>
-                <TableHead className="min-w-[160px] whitespace-nowrap">
-                  Allocations (this community)
+                <TableHead className="min-w-[280px]">
+                  Adjacent with Shortfalls
                 </TableHead>
-                <TableHead className="text-right w-[100px]">Action</TableHead>
+                <TableHead className="min-w-[160px]">
+                  Adjacent Reallocation
+                </TableHead>
+                <TableHead className="text-right w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading && rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-10">
+                  <TableCell colSpan={5} className="text-center py-10">
                     <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={5}
                     className="text-center py-10 text-muted-foreground"
                   >
                     No rows match filters or the API returned an empty list.
@@ -440,121 +443,64 @@ export default function AdjacentReallocation() {
               ) : (
                 filteredRows.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="align-top">
+                    <TableCell className="align-middle">
                       <div className="font-medium">{c.name}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        req {c.required} · act {c.actual} · shortfall{' '}
-                        <span className="text-foreground font-medium">
-                          {c.shortfall}
-                        </span>
-                        {c.excess ? (
-                          <span> · excess {c.excess}</span>
-                        ) : null}
-                      </div>
-                      <div className="text-xs mt-1 flex flex-wrap items-center gap-1">
-                        <span className="text-muted-foreground">Eligible excess</span>
-                        <Badge variant="secondary" className="text-xs">
+                    </TableCell>
+                    <TableCell className="text-center align-middle">
+                      {c.eligibleExcess > 0 ? (
+                        <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">
                           {c.eligibleExcess}
                         </Badge>
-                        <span className="text-muted-foreground">
-                          · {c.eligibleSites.length} site
-                          {c.eligibleSites.length === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top max-w-[340px]">
-                      <div className="text-xs font-medium text-muted-foreground mb-1">
-                        {c.adjacentCount} adjacent
-                        {c.adjacentWithShortfalls.length !== c.adjacentCount
-                          ? ` · ${c.adjacentWithShortfalls.length} in payload`
-                          : ''}
-                      </div>
-                      {c.adjacentWithShortfalls.length === 0 ? (
-                        <span className="text-xs text-muted-foreground">—</span>
                       ) : (
-                        <ul className="space-y-2 text-xs">
-                          {c.adjacentWithShortfalls.map((a) => (
-                            <li
-                              key={a.id}
-                              className="rounded-md border bg-muted/30 px-2 py-1.5"
-                            >
-                              <div className="flex items-start justify-between gap-1">
-                                <span className="font-medium">{a.name}</span>
-                                {a.reallocation_id ? (
-                                  <button
-                                    type="button"
-                                    className="shrink-0 rounded p-0.5 hover:bg-muted"
-                                    title="PATCH allocation"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleOpenPatch(c, a)
-                                    }}
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                  </button>
-                                ) : null}
-                              </div>
-                              <div className="text-muted-foreground mt-0.5">
-                                shortfall {a.shortfall} · req {a.required} / act{' '}
-                                {a.actual}
-                                {a.excess ? (
-                                  <span> · excess {a.excess}</span>
-                                ) : null}
-                              </div>
-                              <div className="mt-1 grid grid-cols-1 gap-0.5 text-[11px] leading-tight">
-                                <span>
-                                  <span className="text-muted-foreground">
-                                    Into adjacent:
-                                  </span>{' '}
-                                  <strong>{a.totalAllocatedTo}</strong> sites
-                                  <span className="text-muted-foreground">
-                                    {' '}
-                                    ({a.allocatedToCount} record
-                                    {a.allocatedToCount === 1 ? '' : 's'})
-                                  </span>
-                                </span>
-                                <span>
-                                  <span className="text-muted-foreground">
-                                    From adjacent:
-                                  </span>{' '}
-                                  <strong>{a.totalAllocatedFrom}</strong> sites
-                                  <span className="text-muted-foreground">
-                                    {' '}
-                                    ({a.allocatedFromCount} record
-                                    {a.allocatedFromCount === 1 ? '' : 's'})
-                                  </span>
-                                </span>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+                        <Badge variant="secondary">{c.eligibleExcess}</Badge>
                       )}
                     </TableCell>
-                    <TableCell className="align-top text-xs">
-                      <div>
-                        <span className="text-muted-foreground">Out</span>:{' '}
-                        <strong>{c.totalAllocatedOut}</strong> sites
-                        <span className="text-muted-foreground">
-                          {' '}
-                          ({c.allocatedOutCount} record
-                          {c.allocatedOutCount === 1 ? '' : 's'})
-                        </span>
-                      </div>
-                      <div className="mt-1">
-                        <span className="text-muted-foreground">In</span>:{' '}
-                        <strong>{c.totalAllocatedIn}</strong> sites
-                        <span className="text-muted-foreground">
-                          {' '}
-                          ({c.allocatedInCount} record
-                          {c.allocatedInCount === 1 ? '' : 's'})
-                        </span>
-                      </div>
+                    <TableCell className="align-middle">
+                      {c.adjacentWithShortfalls.length === 0 ? (
+                        <span className="text-sm text-muted-foreground">N/A</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {c.adjacentWithShortfalls.map((a) => (
+                            <Badge
+                              key={a.id}
+                              className="bg-red-100 text-red-700 hover:bg-red-100 border-red-200 text-xs"
+                            >
+                              {a.name} – {a.shortfall}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right align-top">
+                    <TableCell className="align-middle">
+                      {c.allocatedOut.length === 0 ? (
+                        <span className="text-sm text-muted-foreground">
+                          {c.adjacentWithShortfalls.length === 0 ? 'N/A' : '—'}
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {(() => {
+                            const targetCommunities = new Map<string, number>()
+                            c.allocatedOut.forEach((alloc) => {
+                              const name = alloc.toCommunity || 'Unknown'
+                              targetCommunities.set(name, (targetCommunities.get(name) || 0) + 1)
+                            })
+                            return Array.from(targetCommunities.entries()).map(([name, count]) => (
+                              <Badge
+                                key={name}
+                                className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200 text-xs"
+                              >
+                                {name} – {count}
+                              </Badge>
+                            ))
+                          })()}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right align-middle">
                       <Button
                         size="sm"
                         onClick={() => handleOpenAllocate(c)}
-                        disabled={c.eligibleSites.length === 0}
+                        disabled={c.eligibleSites.length === 0 || c.adjacentWithShortfalls.length === 0}
                       >
                         Reallocate
                       </Button>

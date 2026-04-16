@@ -6,6 +6,7 @@ import type {
   AdjacentCommunityUi,
   AdjacentListSelectResult,
   AdjacentShortfallUi,
+  AllocationRecordUi,
   EligibleSiteUi,
 } from './types'
 
@@ -81,8 +82,31 @@ export function normalizeCommunityRow(
   const adjacentCount = Number(
     raw.adjacent_count ?? rawAdj.length ?? adjacentWithShortfalls.length,
   )
-  const allocatedOut = Array.isArray(raw.allocated_out) ? raw.allocated_out : []
-  const allocatedIn = Array.isArray(raw.allocated_in) ? raw.allocated_in : []
+  const rawAllocatedOut = Array.isArray(raw.allocated_out) ? raw.allocated_out : []
+  const rawAllocatedIn = Array.isArray(raw.allocated_in) ? raw.allocated_in : []
+
+  const mapAllocation = (item: unknown): AllocationRecordUi | null => {
+    if (!item || typeof item !== 'object') return null
+    const a = item as Record<string, unknown>
+    const id = String(a.id ?? a.reallocation_id ?? a.reallocationId ?? '')
+    if (!id) return null
+    const siteCensusId = Number(a.site_census_id ?? a.siteCensusId ?? 0)
+    if (!Number.isFinite(siteCensusId) || siteCensusId <= 0) return null
+    return {
+      id,
+      siteCensusId,
+      siteName: String(a.site_name ?? a.siteName ?? ''),
+      fromCommunity: String(a.from_community ?? a.fromCommunity ?? ''),
+      fromCommunityId: String(a.from_community_id ?? a.fromCommunityId ?? ''),
+      toCommunity: String(a.to_community ?? a.toCommunity ?? ''),
+      toCommunityId: String(a.to_community_id ?? a.toCommunityId ?? ''),
+      reallocatedAt: String(a.reallocated_at ?? a.reallocatedAt ?? ''),
+      reason: String(a.reason ?? ''),
+    }
+  }
+
+  const allocatedOut = rawAllocatedOut.map(mapAllocation).filter((x): x is AllocationRecordUi => x != null)
+  const allocatedIn = rawAllocatedIn.map(mapAllocation).filter((x): x is AllocationRecordUi => x != null)
 
   return {
     id,
@@ -99,6 +123,8 @@ export function normalizeCommunityRow(
     totalAllocatedIn: Number(raw.total_allocated_in ?? 0),
     allocatedOutCount: allocatedOut.length,
     allocatedInCount: allocatedIn.length,
+    allocatedOut,
+    allocatedIn,
   }
 }
 
