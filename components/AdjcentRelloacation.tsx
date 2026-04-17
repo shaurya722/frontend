@@ -61,7 +61,7 @@ const PROGRAMS = [
 
 export default function AdjacentReallocation() {
   const { toast } = useToast()
-  const { data: censusYearsData } = useCensusYears()
+  const { data: censusYearsData, isSuccess: censusYearsLoaded } = useCensusYears()
 
   const [search, setSearch] = useState('')
   const [program, setProgram] = useState<string>('Paint')
@@ -99,7 +99,7 @@ export default function AdjacentReallocation() {
     isError,
     error,
     refetch,
-  } = useAdjacentAllocations(listParams)
+  } = useAdjacentAllocations(listParams, censusYearsLoaded)
 
   const allocateMutation = useAllocateAdjacent()
 

@@ -56,7 +56,7 @@ export const useMapData = (filters: MapFilters) => {
   return useQuery<MapDataResponse>({
     queryKey: ['mapData', filters],
     queryFn: async () => {
-      const apiUrl = new URL('http://localhost:8000/api/community/map-data/')
+      const apiUrl = new URL('https://arc-celery-backend-qg4h8ah9c-shaurya722s-projects.vercel.app/api/community/map-data/')
       if (filters.performancePeriod !== 'all') {
         apiUrl.searchParams.set('census_year', filters.performancePeriod)
       }

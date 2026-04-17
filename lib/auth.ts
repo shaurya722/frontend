@@ -1,6 +1,4 @@
-// Auth utilities - API integration
-
-import axiosInstance from './axios-instance'
+// Auth utilities - Frontend-only authentication
 
 export interface LoginCredentials {
   email: string
@@ -21,26 +19,26 @@ export interface LoginResponse {
 }
 
 export async function login(credentials: LoginCredentials): Promise<User> {
-  try {
-    const response = await axiosInstance.post<LoginResponse>('/accounts/login/', {
-      email: credentials.email,
-      password: credentials.password,
-    })
-
-    const { access, refresh, user } = response.data
-
-    // Store tokens in localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', access)
-      localStorage.setItem('refresh_token', refresh)
-      localStorage.setItem('user', JSON.stringify(user))
+  // Frontend-only authentication with dummy credentials
+  if (credentials.email === 'admin' && credentials.password === 'admin123') {
+    const mockUser: User = {
+      id: 1,
+      email: 'admin',
+      first_name: 'Admin',
+      last_name: 'User',
     }
 
-    return user
-  } catch (error: any) {
-    console.error('Login error:', error)
-    throw new Error(error.message || 'Login failed')
+    // Store mock tokens in localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('access_token', 'mock_access_token')
+      localStorage.setItem('refresh_token', 'mock_refresh_token')
+      localStorage.setItem('user', JSON.stringify(mockUser))
+    }
+
+    return mockUser
   }
+
+  throw new Error('Invalid username or password')
 }
 
 export async function logout(): Promise<void> {

@@ -27,13 +27,14 @@ export function adjacentAllocationsQueryKey(params: AdjacentListParams) {
   ] as const
 }
 
-export function useAdjacentAllocations(params: AdjacentListParams) {
+export function useAdjacentAllocations(params: AdjacentListParams, enabled = true) {
   const limit = params.limit ?? 20
   return useQuery({
     queryKey: adjacentAllocationsQueryKey(params),
     queryFn: () => fetchAdjacentAllocations(params),
     select: (data): AdjacentListSelectResult =>
       rowsFromListPayload(data, limit),
+    enabled,
   })
 }
 
