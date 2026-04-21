@@ -69,13 +69,13 @@ export default function LoginPage() {
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Username</Label>
                 <Input
                   id="email"
-                  type="email"
+                  type="text"
                   value={credentials.email}
                   onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
-                  placeholder="Enter your email"
+                  placeholder="Enter your username"
                   required
                 />
               </div>
@@ -129,8 +129,12 @@ export default function LoginPage() {
           <CardContent className="space-y-2">
             <div className="text-xs space-y-1">
               <div className="flex justify-between">
-                <span className="font-medium">Administrator:</span>
-                <span>admin@email.com / admin</span>
+                <span className="font-medium">Username:</span>
+                <span>admin</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">Password:</span>
+                <span>admin123</span>
               </div>
             </div>
           </CardContent>

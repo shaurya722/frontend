@@ -219,6 +219,23 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
   const updateMapCommunityMutation = useUpdateMapCommunity();
   const deleteMapCommunityMutation = useDeleteMapCommunity();
 
+  // Handle edit of server-rendered polygon geometry from LeafletMap
+  const handleMapPolygonEdited = async (communityId: string, geometry: any) => {
+    try {
+      await updateMapCommunityMutation.mutateAsync({
+        id: communityId,
+        payload: { boundary: geometry },
+      });
+      toast({ title: 'Boundary updated', description: 'Polygon geometry was saved.' });
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message?: string }).message)
+          : 'Failed to update polygon';
+      toast({ title: 'Update failed', description: message, variant: 'destructive' });
+    }
+  };
+
   useEffect(() => {
     const t = setTimeout(
       () => setDebouncedSaveCommunitySearch(saveCommunitySearch),
@@ -1233,6 +1250,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   onMapCommunityClick={handleMapCommunityClick}
                   filters={mapFilters}
                   mapCommunities={mapCommunitiesList}
+                  onPolygonEdited={handleMapPolygonEdited}
                   // layers={mapLayers}
                 />
               </Suspense>
@@ -1767,9 +1785,9 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
           <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
             <Button
               type="button"
-              variant="destructive"
+              variant="outline"
               className="sm:mr-auto"
-              onClick={() => setDeleteMapCommunityOpen(true)}
+              onClick={() => void handleConfirmDeleteMapCommunity()}
               disabled={deleteMapCommunityMutation.isPending}
             >
               Delete…

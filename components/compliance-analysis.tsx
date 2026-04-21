@@ -56,6 +56,9 @@ export default function ComplianceAnalysis() {
   const [page, setPage] = useState(1)
   const [limit] = useState(10)
   const [ordering, setOrdering] = useState('community__name')
+  const [adjacentLogicEnabled, setAdjacentLogicEnabled] = useState(false)
+  const [eventOffsetsEnabled, setEventOffsetsEnabled] = useState(false)
+  const [directServiceOffsetsEnabled, setDirectServiceOffsetsEnabled] = useState(false)
 
   // Debounce search input
   useEffect(() => {
@@ -245,6 +248,8 @@ export default function ComplianceAnalysis() {
                 </Label>
                 <Switch
                   id='adjacent-logic'
+                  checked={adjacentLogicEnabled}
+                  onCheckedChange={setAdjacentLogicEnabled}
                 />
               </div>
               <div className='flex items-center gap-2'>
@@ -256,6 +261,8 @@ export default function ComplianceAnalysis() {
                 </Label>
                 <Switch
                   id='event-offsets'
+                  checked={eventOffsetsEnabled}
+                  onCheckedChange={setEventOffsetsEnabled}
                 />
               </div>
               {/* Status Filter */}
@@ -283,6 +290,8 @@ export default function ComplianceAnalysis() {
                 </Label>
                 <Switch
                   id='direct-service-offsets'
+                  checked={directServiceOffsetsEnabled}
+                  onCheckedChange={setDirectServiceOffsetsEnabled}
                 />
               </div>
               <div className='flex items-center gap-2'>
@@ -398,6 +407,21 @@ export default function ComplianceAnalysis() {
                     <TableHead className='bg-gray-50'>
                       Program
                     </TableHead>
+                    {directServiceOffsetsEnabled && (
+                      <TableHead className='bg-gray-50'>
+                        Base Required
+                      </TableHead>
+                    )}
+                    {adjacentLogicEnabled && (
+                      <TableHead className='bg-gray-50'>
+                        Sites from Adjacent
+                      </TableHead>
+                    )}
+                    {eventOffsetsEnabled && (
+                      <TableHead className='bg-gray-50'>
+                        Sites from Events
+                      </TableHead>
+                    )}
                     <TableHead className='bg-gray-50'>
                       Required
                     </TableHead>
@@ -418,7 +442,7 @@ export default function ComplianceAnalysis() {
                   {isLoading ? (
                     <TableRow>
                       <TableCell
-                        colSpan={8}
+                        colSpan={8 + (adjacentLogicEnabled ? 1 : 0) + (eventOffsetsEnabled ? 1 : 0) + (directServiceOffsetsEnabled ? 1 : 0)}
                         className='text-center py-8 text-muted-foreground'
                       >
                         Loading...
@@ -427,7 +451,7 @@ export default function ComplianceAnalysis() {
                   ) : results.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={8}
+                        colSpan={8 + (adjacentLogicEnabled ? 1 : 0) + (eventOffsetsEnabled ? 1 : 0) + (directServiceOffsetsEnabled ? 1 : 0)}
                         className='text-center py-8 text-muted-foreground'
                       >
                         No results found
@@ -438,6 +462,15 @@ export default function ComplianceAnalysis() {
                       <TableRow key={item.id}>
                         <TableCell>{item.community_name}</TableCell>
                         <TableCell>{item.program}</TableCell>
+                        {directServiceOffsetsEnabled && (
+                          <TableCell>{item.base_required_sites}</TableCell>
+                        )}
+                        {adjacentLogicEnabled && (
+                          <TableCell>{item.sites_from_adjacent}</TableCell>
+                        )}
+                        {eventOffsetsEnabled && (
+                          <TableCell>{item.sites_from_events}</TableCell>
+                        )}
                         <TableCell>{item.required_sites}</TableCell>
                         <TableCell>{item.actual_sites}</TableCell>
                         <TableCell>{item.shortfall}</TableCell>

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import axiosInstance from '@/lib/axios-instance'
 
 export interface CensusYear {
   id: number
@@ -13,11 +14,8 @@ export const useCensusYears = () => {
   return useQuery<CensusYearsResponse>({
     queryKey: ['censusYears'],
     queryFn: async () => {
-      const response = await fetch('http://127.0.0.1:8000/api/community/years/')
-      if (!response.ok) {
-        throw new Error('Failed to fetch census years')
-      }
-      return response.json()
+      const { data } = await axiosInstance.get('/api/community/years/')
+      return data
     },
   })
 }

@@ -170,10 +170,10 @@ export function AppSidebar() {
     {
       title: "Analysis & Tools",
       items: [
-        {
+         {
           title: "Direct Service Offset",
-          icon: Calculator,
-          href: "/dashboard/tool-a-offset",
+          icon: FileBarChart,
+          href: "/dashboard/direct-service-offset",
           visible: isAnalyst,
         },
         {
@@ -190,23 +190,23 @@ export function AppSidebar() {
         },
       ],
     },
-    {
-      title: "Data & Reports",
-      items: [
-        {
-          title: "Reports & Export",
-          icon: FileText,
-          href: "/dashboard/reports",
-          visible: true,
-        },
-        {
-          title: "Data Management",
-          icon: Database,
-          href: "/dashboard/data",
-          visible: isAnalyst,
-        },
-      ],
-    },
+    // {
+    //   title: "Data & Reports",
+    //   items: [
+    //     {
+    //       title: "Reports & Export",
+    //       icon: FileText,
+    //       href: "/dashboard/reports",
+    //       visible: true,
+    //     },
+    //     {
+    //       title: "Data Management",
+    //       icon: Database,
+    //       href: "/dashboard/data",
+    //       visible: isAnalyst,
+    //     },
+    //   ],
+    // },
     {
       title: "Administration",
       items: [
