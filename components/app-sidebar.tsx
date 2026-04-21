@@ -170,10 +170,10 @@ export function AppSidebar() {
     {
       title: "Analysis & Tools",
       items: [
-        {
+         {
           title: "Direct Service Offset",
-          icon: Calculator,
-          href: "/dashboard/tool-a-offset",
+          icon: FileBarChart,
+          href: "/dashboard/direct-service-offset",
           visible: isAnalyst,
         },
         {
