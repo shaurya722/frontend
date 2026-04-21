@@ -5,6 +5,8 @@ import type {
   UpdateDirectServiceOffsetPayload,
   CommunityOffset,
   CreateCommunityOffsetPayload,
+  UpdateCommunityOffsetPayload,
+  DirectServiceOffsetPreview,
 } from './types'
 
 const DIRECT_SERVICE_BASE = '/api/compliance/direct-service-offsets/'
@@ -34,5 +36,26 @@ export async function createCommunityOffset(
   payload: CreateCommunityOffsetPayload,
 ): Promise<CommunityOffset> {
   const { data } = await axiosInstance.post(COMMUNITY_OFFSETS_BASE, payload)
+  return data
+}
+
+export async function fetchDirectServiceOffsetPreview(
+  censusYearId: number,
+  program: string,
+): Promise<DirectServiceOffsetPreview> {
+  const { data } = await axiosInstance.get(`${DIRECT_SERVICE_BASE}preview/`, {
+    params: {
+      census_year_id: censusYearId,
+      program: program,
+    },
+  })
+  return data
+}
+
+export async function updateCommunityOffset(
+  id: number,
+  payload: UpdateCommunityOffsetPayload,
+): Promise<CommunityOffset> {
+  const { data } = await axiosInstance.patch(`${COMMUNITY_OFFSETS_BASE}${id}/`, payload)
   return data
 }

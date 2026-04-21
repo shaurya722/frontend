@@ -16,6 +16,9 @@ import {
   useDirectServiceOffsets,
   useCreateDirectServiceOffset,
   useUpdateDirectServiceOffset,
+  useDirectServiceOffsetPreview,
+  useCreateCommunityOffset,
+  useUpdateCommunityOffset,
 } from "@/hooks/useDirectServiceOffsets"
 
 const PROGRAMS = [
@@ -29,9 +32,11 @@ const PROGRAMS = [
 export default function DirectServiceOffset() {
   const { toast } = useToast()
   const { data: censusYearsData } = useCensusYears()
-  const { data: offsets, isLoading, isError, error } = useDirectServiceOffsets()
+  // const { data: offsets, isLoading, isError, error } = useDirectServiceOffsets()
   const createMutation = useCreateDirectServiceOffset()
   const updateMutation = useUpdateDirectServiceOffset()
+  const createCommunityMutation = useCreateCommunityOffset()
+  const updateCommunityMutation = useUpdateCommunityOffset()
 
   const [newOffset, setNewOffset] = useState({
     census_year: 0,
@@ -44,13 +49,17 @@ export default function DirectServiceOffset() {
   const [editPercentage, setEditPercentage] = useState(0)
   const [editIsActive, setEditIsActive] = useState(true)
 
-  // Global percentage reduction state
+  // Global percentage reduction state - default to year 2050 and Paint
   const [globalReduction, setGlobalReduction] = useState({
     program: 'Paint' as string,
-    year: 2026 as number,
+    year: 2050 as number,
     percentage: 0,
   })
   const [isApplyingGlobal, setIsApplyingGlobal] = useState(false)
+
+  // Community editing state
+  const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null)
+  const [editingCommunityPercentage, setEditingCommunityPercentage] = useState(0)
 
   const censusYearOptions = useMemo(() => {
     const fromApi = censusYearsData?.years?.map((y) => y) ?? []
@@ -130,6 +139,20 @@ export default function DirectServiceOffset() {
     setEditIsActive(isActive)
   }
 
+  // Find census year ID for the selected year
+  const selectedCensusYearId = useMemo(() => {
+    const yearOption = censusYearOptions.find((y) => y.year === globalReduction.year)
+    return yearOption?.id ?? null
+  }, [censusYearOptions, globalReduction.year])
+
+  // Fetch preview data
+  const {
+    data: previewData,
+    isLoading: isPreviewLoading,
+    isError: isPreviewError,
+    refetch: refetchPreview,
+  } = useDirectServiceOffsetPreview(selectedCensusYearId, globalReduction.program)
+
   const handleApplyGlobalReduction = async () => {
     if (globalReduction.percentage <= 0 || globalReduction.percentage > 100) {
       toast({
@@ -140,14 +163,30 @@ export default function DirectServiceOffset() {
       return
     }
 
+    if (!selectedCensusYearId) {
+      toast({
+        title: 'Invalid year',
+        description: 'Please select a valid census year.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsApplyingGlobal(true)
     try {
-      // TODO: Replace with actual API call when backend is ready
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      // Create the global offset
+      await createMutation.mutateAsync({
+        census_year: selectedCensusYearId,
+        program: globalReduction.program,
+        percentage: globalReduction.percentage,
+        is_active: true,
+      })
       toast({
         title: 'Global reduction applied',
         description: `Applied ${globalReduction.percentage}% reduction to ${globalReduction.program} for ${globalReduction.year}.`,
       })
+      // Refresh preview data
+      refetchPreview()
     } catch (e: unknown) {
       const message =
         e && typeof e === 'object' && 'message' in e
@@ -169,6 +208,58 @@ export default function DirectServiceOffset() {
       : "bg-gray-100 text-gray-800 border-gray-200"
   }
 
+  // Community editing handlers
+  const startEditingCommunity = (communityId: string, currentPercentage: number) => {
+    setEditingCommunityId(communityId)
+    setEditingCommunityPercentage(currentPercentage)
+  }
+
+  const cancelEditingCommunity = () => {
+    setEditingCommunityId(null)
+    setEditingCommunityPercentage(0)
+  }
+
+  const saveCommunityOverride = async (communityId: string, communityName: string) => {
+    if (!selectedCensusYearId) {
+      toast({
+        title: 'Invalid year',
+        description: 'Please select a valid census year.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      // Note: The preview API returns community_id (UUID), but for the actual override
+      // we need to either create a new one or update an existing one.
+      // Since we don't have the offset ID from preview, we create a new override.
+      await createCommunityMutation.mutateAsync({
+        census_year: selectedCensusYearId,
+        program: globalReduction.program,
+        community: communityId,
+        percentage: editingCommunityPercentage,
+        is_active: true,
+      })
+      toast({
+        title: 'Community override saved',
+        description: `${communityName} now has ${editingCommunityPercentage}% reduction.`,
+      })
+      setEditingCommunityId(null)
+      // Refresh the preview list to show updated data
+      refetchPreview()
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message?: string }).message)
+          : 'Failed to save community override'
+      toast({
+        title: 'Request failed',
+        description: message,
+        variant: 'destructive',
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -181,14 +272,14 @@ export default function DirectServiceOffset() {
         </CardHeader>
       </Card>
 
-      {isError && (
+      {/* {isError && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             {(error as Error)?.message ?? 'Failed to load direct service offsets.'}
           </AlertDescription>
         </Alert>
-      )}
+      )} */}
 
       {/* Create New Offset */}
       <Card>
@@ -390,8 +481,138 @@ export default function DirectServiceOffset() {
         </CardContent>
       </Card>
 
-      {/* Active Offsets */}
+      {/* Communities Preview Table */}
       <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="w-5 h-5" />
+            Communities Affected
+          </CardTitle>
+          <CardDescription>
+            Preview of site requirements for {globalReduction.program} in {globalReduction.year}
+            {previewData && ` (${previewData.total_communities} communities)`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isPreviewLoading ? (
+            <div className="text-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+            </div>
+          ) : isPreviewError ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>Failed to load preview data.</AlertDescription>
+            </Alert>
+          ) : !previewData || previewData.communities.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <MapPin className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No communities found for the selected year and program</p>
+            </div>
+          ) : (
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="font-medium text-gray-700">Community</TableHead>
+                    <TableHead className="font-medium text-gray-700 text-center">Required</TableHead>
+                    <TableHead className="font-medium text-gray-700 text-center">% Reduction</TableHead>
+                    <TableHead className="font-medium text-gray-700 text-center">New Required</TableHead>
+                    <TableHead className="font-medium text-gray-700 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {previewData.communities.map((community) => (
+                    <TableRow key={community.community_id} className="hover:bg-gray-50">
+                      <TableCell>
+                        <div className="font-medium text-gray-900">{community.community_name}</div>
+                        <div className="text-sm text-gray-500">Pop: {community.population.toLocaleString()}</div>
+                      </TableCell>
+                      <TableCell className="text-center text-gray-700">
+                        {community.base_required_sites}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {editingCommunityId === community.community_id ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={editingCommunityPercentage}
+                              onChange={(e) => setEditingCommunityPercentage(Number(e.target.value) || 0)}
+                              className="w-16 h-8 text-center px-1"
+                            />
+                            <span className="text-xs text-gray-500">%</span>
+                          </div>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              community.offset_source === 'community'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                            }`}
+                          >
+                            {community.offset_percentage}%
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span
+                          className={`font-medium ${
+                            community.new_required_sites < community.base_required_sites
+                              ? 'text-green-600'
+                              : 'text-gray-700'
+                          }`}
+                        >
+                          {community.new_required_sites}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {editingCommunityId === community.community_id ? (
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              className="h-8 px-2"
+                              onClick={() => saveCommunityOverride(community.community_id, community.community_name)}
+                              disabled={createCommunityMutation.isPending}
+                            >
+                              {createCommunityMutation.isPending ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                'Save'
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2"
+                              onClick={cancelEditingCommunity}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            onClick={() => startEditingCommunity(community.community_id, community.offset_percentage)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Active Offsets */}
+      {/* <Card>
         <CardHeader>
           <CardTitle>Active Direct Service Offsets</CardTitle>
           <CardDescription>Current percentage-based reductions for lighting program requirements</CardDescription>
@@ -508,7 +729,7 @@ export default function DirectServiceOffset() {
             </Table>
           )}
         </CardContent>
-      </Card>
+      </Card> */}
 
       <Card>
         <CardHeader>
