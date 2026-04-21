@@ -202,10 +202,6 @@ export default function SiteManagement() {
     details?: string
   } | null>(null)
 
-  // Success/Error messages
-  const [successMessage, setSuccessMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
-
   const { toast } = useToast()
 
   const { data: censusYears } = useCensusYears()
@@ -308,20 +304,6 @@ export default function SiteManagement() {
     }
   }, [siteData, dialogMode])
 
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(''), 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [successMessage])
-
-  useEffect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => setErrorMessage(''), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [errorMessage])
-
   // Dialog handlers
   const handleAddSite = () => {
     setDialogMode('add')
@@ -346,9 +328,11 @@ export default function SiteManagement() {
         (siteData.collection_scope && siteData.collection_scope.length > 0)
 
       if (!hasAnySelection) {
-        setErrorMessage(
-          'Please select at least one item in Programs & Scheduling, Materials Collected/Services, or Collection Sector.'
-        )
+        toast({
+          title: 'Missing required information',
+          description: 'Please select at least one item in Programs & Scheduling, Materials Collected/Services, or Collection Sector.',
+          variant: 'destructive',
+        })
         return
       }
 
@@ -388,8 +372,12 @@ export default function SiteManagement() {
         console.log('Transformed API data:', apiData)
         console.log('Calling createSiteMutation.mutateAsync')
         const result = await createSiteMutation.mutateAsync(apiData)
-        console.log('Site created successfully:', result)
-        setSuccessMessage('Site created successfully')
+  console.log('Site created successfully:', result)
+        toast({
+          variant: 'success',
+          title: 'Site created',
+          description: 'New collection site has been added successfully.',
+        })
       } else {
         // Update site
         console.log('Updating site:', siteData)
@@ -403,13 +391,21 @@ export default function SiteManagement() {
         console.log('Calling updateSiteMutation.mutateAsync with site ID:', editingSiteId)
         const result = await updateSiteMutation.mutateAsync({ id: editingSiteId?.toString() || '', data: apiData })
         console.log('Site updated successfully:', result)
-        setSuccessMessage('Site updated successfully')
+        toast({
+          variant: 'success',
+          title: 'Site updated',
+          description: 'Collection site has been updated successfully.',
+        })
       }
       setIsDialogOpen(false)
       setSelectedSite(null)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving site:', error)
-      setErrorMessage('Failed to save site')
+      toast({
+        title: 'Failed to save site',
+        description: error?.message || 'An error occurred while saving the site.',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -429,11 +425,19 @@ export default function SiteManagement() {
 
     try {
       await deleteMutation.mutateAsync(siteToDelete.id)
-      setSuccessMessage(`Site "${siteToDelete.site_name}" deleted successfully`)
+      toast({
+        variant: 'success',
+        title: 'Site deleted',
+        description: `"${siteToDelete.site_name}" has been deleted successfully.`,
+      })
       setIsDeleteDialogOpen(false)
       setSiteToDelete(null)
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to delete site')
+      toast({
+        title: 'Failed to delete site',
+        description: error?.message || 'An error occurred while deleting the site.',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -534,6 +538,7 @@ export default function SiteManagement() {
     try {
       await importSiteMutation.mutateAsync(selectedImportFile)
       toast({
+        variant: 'success',
         title: 'Import complete',
         description: 'Site census data processed successfully.',
       })
@@ -580,17 +585,6 @@ export default function SiteManagement() {
 
   return (
     <div className='space-y-6'>
-      {/* Success/Error Messages */}
-      {successMessage && (
-        <Alert className="bg-green-50 border-green-200">
-          <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
-        </Alert>
-      )}
-      {errorMessage && (
-        <Alert className="bg-red-50 border-red-200">
-          <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
-        </Alert>
-      )}
       {importErrorDetails && (
         <Alert variant='destructive' className='border-red-300 bg-red-50'>
           <div className='space-y-2'>

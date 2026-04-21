@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import localFont from "next/font/local"
 import { QueryProvider } from "@/providers/query-provider"
 import { AuthGuard } from "@/components/auth-guard"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 const inter = localFont({
@@ -55,6 +56,7 @@ export default function RootLayout({
       <body className={`${inter.className} antialiased h-full`}>
         <QueryProvider>
           <AuthGuard>{children}</AuthGuard>
+          <Toaster />
         </QueryProvider>
       </body>
     </html>
