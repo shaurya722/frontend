@@ -13,9 +13,9 @@ import { Zap, Calculator, MapPin, Info, Loader2, Edit, AlertCircle, FileText, Re
 import { useToast } from "@/hooks/use-toast"
 import { useCensusYears } from "@/hooks/useCensusYears"
 import {
-  useDirectServiceOffsets,
+  // useDirectServiceOffsets, // Unused
   useCreateDirectServiceOffset,
-  useUpdateDirectServiceOffset,
+  // useUpdateDirectServiceOffset, // Unused - for Active Offsets card
   useDirectServiceOffsetPreview,
   useCreateCommunityOffset,
   useUpdateCommunityOffset,
@@ -34,20 +34,9 @@ export default function DirectServiceOffset() {
   const { data: censusYearsData } = useCensusYears()
   // const { data: offsets, isLoading, isError, error } = useDirectServiceOffsets()
   const createMutation = useCreateDirectServiceOffset()
-  const updateMutation = useUpdateDirectServiceOffset()
+  // const updateMutation = useUpdateDirectServiceOffset() // Unused - for Active Offsets card
   const createCommunityMutation = useCreateCommunityOffset()
   const updateCommunityMutation = useUpdateCommunityOffset()
-
-  const [newOffset, setNewOffset] = useState({
-    census_year: 0,
-    program: 'Paint' as string,
-    percentage: 0,
-    is_active: true,
-  })
-
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editPercentage, setEditPercentage] = useState(0)
-  const [editIsActive, setEditIsActive] = useState(true)
 
   // Global percentage reduction state - default to year 2050 and Paint
   const [globalReduction, setGlobalReduction] = useState({
@@ -66,45 +55,12 @@ export default function DirectServiceOffset() {
     return fromApi
   }, [censusYearsData])
 
-  const handleCreateOffset = async () => {
-    if (!newOffset.census_year || newOffset.percentage === 0) {
-      toast({
-        title: 'Missing fields',
-        description: 'Please select a census year and enter a percentage.',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    try {
-      await createMutation.mutateAsync({
-        census_year: newOffset.census_year,
-        program: newOffset.program,
-        percentage: newOffset.percentage,
-        is_active: newOffset.is_active,
-      })
-      toast({
-        title: 'Offset created',
-        description: 'Direct service offset has been created successfully.',
-      })
-      setNewOffset({
-        census_year: 0,
-        program: 'Paint',
-        percentage: 0,
-        is_active: true,
-      })
-    } catch (e: unknown) {
-      const message =
-        e && typeof e === 'object' && 'message' in e
-          ? String((e as { message?: string }).message)
-          : 'Failed to create offset'
-      toast({
-        title: 'Request failed',
-        description: message,
-        variant: 'destructive',
-      })
-    }
-  }
+  // Note: handleUpdateOffset and related editing functions are commented out
+  // along with the Active Offsets card. Restore when needed.
+  /*
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editPercentage, setEditPercentage] = useState(0)
+  const [editIsActive, setEditIsActive] = useState(true)
 
   const handleUpdateOffset = async (id: number) => {
     try {
@@ -138,6 +94,13 @@ export default function DirectServiceOffset() {
     setEditPercentage(percentage)
     setEditIsActive(isActive)
   }
+
+  const getStatusColor = (isActive: boolean) => {
+    return isActive
+      ? "bg-green-100 text-green-800 border-green-200"
+      : "bg-gray-100 text-gray-800 border-gray-200"
+  }
+  */
 
   // Find census year ID for the selected year
   const selectedCensusYearId = useMemo(() => {
@@ -200,12 +163,6 @@ export default function DirectServiceOffset() {
     } finally {
       setIsApplyingGlobal(false)
     }
-  }
-
-  const getStatusColor = (isActive: boolean) => {
-    return isActive
-      ? "bg-green-100 text-green-800 border-green-200"
-      : "bg-gray-100 text-gray-800 border-gray-200"
   }
 
   // Community editing handlers
@@ -280,106 +237,6 @@ export default function DirectServiceOffset() {
           </AlertDescription>
         </Alert>
       )} */}
-
-      {/* Create New Offset */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Create Direct Service Offset</CardTitle>
-          <CardDescription>Configure percentage reduction based on direct pickup volume</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="census-year">Census Year</Label>
-              <Select
-                value={newOffset.census_year ? String(newOffset.census_year) : ""}
-                onValueChange={(value) =>
-                  setNewOffset({ ...newOffset, census_year: Number(value) })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select census year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {censusYearOptions.map((y) => (
-                    <SelectItem key={y.id} value={String(y.id)}>
-                      {y.year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="program">Program</Label>
-              <Select
-                value={newOffset.program}
-                onValueChange={(value) => setNewOffset({ ...newOffset, program: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select program" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROGRAMS.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="percentage-reduction">Percentage Reduction (%)</Label>
-              <Input
-                id="percentage-reduction"
-                type="number"
-                min="0"
-                max="100"
-                value={newOffset.percentage}
-                onChange={(e) =>
-                  setNewOffset({ ...newOffset, percentage: Number(e.target.value) || 0 })
-                }
-                placeholder="Enter percentage reduction"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="is-active">Status</Label>
-              <Select
-                value={newOffset.is_active ? "active" : "inactive"}
-                onValueChange={(value) =>
-                  setNewOffset({ ...newOffset, is_active: value === "active" })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <Button
-            onClick={handleCreateOffset}
-            disabled={createMutation.isPending || !newOffset.census_year || newOffset.percentage === 0}
-          >
-            {createMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Creating...
-              </>
-            ) : (
-              'Create Direct Service Offset'
-            )}
-          </Button>
-        </CardContent>
-      </Card>
 
       {/* Global Percentage Reduction */}
       <Card>
