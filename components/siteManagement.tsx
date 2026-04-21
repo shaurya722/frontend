@@ -376,7 +376,7 @@ export default function SiteManagement() {
         toast({
           variant: 'success',
           title: 'Site created',
-          description: 'New collection site has been added successfully.',
+          description: result?.message || result?.detail || 'New collection site has been added successfully.',
         })
       } else {
         // Update site
@@ -394,16 +394,44 @@ export default function SiteManagement() {
         toast({
           variant: 'success',
           title: 'Site updated',
-          description: 'Collection site has been updated successfully.',
+          description: result?.message || result?.detail || 'Collection site has been updated successfully.',
         })
       }
       setIsDialogOpen(false)
       setSelectedSite(null)
     } catch (error: any) {
       console.error('Error saving site:', error)
+      
+      // Extract error message from API response
+      const errorPayload = error?.response?.data || error?.data || {}
+      let errorMessage = error?.message || 'An error occurred while saving the site.'
+      
+      if (Array.isArray(errorPayload?.non_field_errors) && errorPayload.non_field_errors.length > 0) {
+        errorMessage = errorPayload.non_field_errors.join(', ')
+      } else if (typeof errorPayload?.error === 'string') {
+        errorMessage = errorPayload.error
+      } else if (typeof errorPayload?.message === 'string') {
+        errorMessage = errorPayload.message
+      } else if (typeof errorPayload?.detail === 'string') {
+        errorMessage = errorPayload.detail
+      } else if (Array.isArray(errorPayload?.detail)) {
+        errorMessage = errorPayload.detail.join(', ')
+      } else if (errorPayload && Object.keys(errorPayload).length > 0) {
+        // Handle field validation errors: {field: ["error message"]}
+        const errors = Object.entries(errorPayload)
+          .filter(([key]) => key !== 'non_field_errors')
+          .map(([field, msgs]) => {
+            if (Array.isArray(msgs)) return `${field}: ${msgs.join(', ')}`
+            if (typeof msgs === 'string') return `${field}: ${msgs}`
+            return `${field}: ${JSON.stringify(msgs)}`
+          })
+          .join('; ')
+        if (errors) errorMessage = errors
+      }
+      
       toast({
         title: 'Failed to save site',
-        description: error?.message || 'An error occurred while saving the site.',
+        description: errorMessage,
         variant: 'destructive',
       })
     }
@@ -424,11 +452,11 @@ export default function SiteManagement() {
     if (!siteToDelete) return
 
     try {
-      await deleteMutation.mutateAsync(siteToDelete.id)
+      const result = await deleteMutation.mutateAsync(siteToDelete.id)
       toast({
         variant: 'success',
         title: 'Site deleted',
-        description: `"${siteToDelete.site_name}" has been deleted successfully.`,
+        description: result?.message || result?.detail || `"${siteToDelete.site_name}" has been deleted successfully.`,
       })
       setIsDeleteDialogOpen(false)
       setSiteToDelete(null)
@@ -536,26 +564,44 @@ export default function SiteManagement() {
     }
 
     try {
-      await importSiteMutation.mutateAsync(selectedImportFile)
+      const result = await importSiteMutation.mutateAsync(selectedImportFile)
       toast({
         variant: 'success',
         title: 'Import complete',
-        description: 'Site census data processed successfully.',
+        description: result?.message || result?.detail || 'Site census data processed successfully.',
       })
       setImportErrorDetails(null)
       handleCloseImportDialog()
     } catch (error: any) {
-      const errorPayload =
-        error?.response?.data ||
-        error?.data ||
-        { error: error?.message || 'Failed to import site census data.' }
+      const errorPayload = error?.response?.data || error?.data || {}
+      
+      // Extract error message from various API response formats
+      let errorMessage = 'Failed to import site census data.'
+      if (typeof errorPayload?.error === 'string') {
+        errorMessage = errorPayload.error
+      } else if (typeof errorPayload?.message === 'string') {
+        errorMessage = errorPayload.message
+      } else if (typeof errorPayload?.detail === 'string') {
+        errorMessage = errorPayload.detail
+      } else if (Array.isArray(errorPayload?.detail)) {
+        errorMessage = errorPayload.detail.join(', ')
+      } else if (errorPayload && Object.keys(errorPayload).length > 0) {
+        // Handle validation errors: {field: ["error message"]}
+        const errors = Object.entries(errorPayload)
+          .map(([field, msgs]) => {
+            if (Array.isArray(msgs)) return `${field}: ${msgs.join(', ')}`
+            if (typeof msgs === 'string') return `${field}: ${msgs}`
+            return `${field}: ${JSON.stringify(msgs)}`
+          })
+          .join('; ')
+        if (errors) errorMessage = errors
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
 
       toast({
         title: 'Import failed',
-        description:
-          typeof errorPayload?.error === 'string'
-            ? errorPayload.error
-            : 'Check the CSV and try again.',
+        description: errorMessage,
         variant: 'destructive',
       })
       setImportErrorDetails(errorPayload)

@@ -195,16 +195,46 @@ export default function AdjacentReallocation() {
         reason: allocateReason.trim() || 'Adjacent reallocation',
       })
       toast({
+        variant: 'success',
         title: 'Allocation created',
         description: `${selectedSiteCensusIds.length} site(s) → target community.`,
       })
       setAllocateOpen(false)
       setSelectedCommunity(null)
-    } catch (e: unknown) {
-      const message =
-        e && typeof e === 'object' && 'message' in e
-          ? String((e as { message?: string }).message)
-          : 'Allocation failed'
+    } catch (e: any) {
+      // Debug: log the full error object
+      console.log('Full error object:', e)
+      console.log('Error message:', e?.message)
+      console.log('Error errors:', e?.errors)
+      console.log('Error data:', e?.data)
+      
+      // Axios interceptor returns: { message, status, errors, data }
+      // Default to the message from interceptor (should be pre-extracted)
+      let message = e?.message || 'Allocation failed'
+      
+      // If we have the raw errors array, extract messages directly
+      const rawErrors = e?.errors || e?.data?.errors
+      if (Array.isArray(rawErrors) && rawErrors.length > 0) {
+        const errorMessages = rawErrors.map((err: any) => {
+          // Handle the error field which is JSON stringified: "[\"message\"]"
+          if (typeof err.error === 'string') {
+            try {
+              // Try to parse as JSON array
+              const parsed = JSON.parse(err.error)
+              if (Array.isArray(parsed)) {
+                return parsed.join(', ')
+              }
+              return String(parsed)
+            } catch (parseErr) {
+              // If JSON parse fails, just return the raw string
+              return err.error
+            }
+          }
+          return String(err.error || err.message || 'Unknown error')
+        })
+        message = errorMessages.join('; ')
+      }
+      
       toast({
         title: 'Request failed',
         description: message,

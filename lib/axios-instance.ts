@@ -74,6 +74,8 @@ axiosInstance.interceptors.response.use(
       let errorMessage = 'An error occurred'
 
       try {
+       
+        
         // If data is already parsed, use it
         if (typeof data === 'object' && data !== null) {
           parsedData = data
@@ -81,7 +83,34 @@ axiosInstance.interceptors.response.use(
           // Try to parse as JSON
           parsedData = JSON.parse(data)
         }
-        errorMessage = parsedData?.message || parsedData?.detail || parsedData?.error || `HTTP ${status} error`
+        
+        
+        
+        // Extract error message from various formats
+        if (Array.isArray(parsedData?.errors) && parsedData.errors.length > 0) {
+          // Handle errors array: [{ site_census_id, error: "[\"message\"]" }]
+          const errorMessages = parsedData.errors.map((err: any) => {
+            
+            if (typeof err.error === 'string') {
+              try {
+                const parsed = JSON.parse(err.error)
+                
+                if (Array.isArray(parsed)) return parsed.join(', ')
+                return String(parsed)
+              } catch {
+                return err.error
+              }
+            }
+            return String(err.error || err.message || 'Unknown error')
+          })
+          errorMessage = errorMessages.join('; ')
+          
+        } else if (Array.isArray(parsedData?.non_field_errors) && parsedData.non_field_errors.length > 0) {
+          errorMessage = parsedData.non_field_errors.join(', ')
+        } else {
+          errorMessage = parsedData?.message || parsedData?.detail || parsedData?.error || `HTTP ${status} error`
+          
+        }
       } catch (parseError) {
         // If JSON parsing fails, it's likely an HTML error page
         console.error('❌ JSON Parse Error - likely HTML error page:', typeof data === 'string' ? data.substring(0, 200) : data)
