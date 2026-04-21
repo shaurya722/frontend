@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Zap, Calculator, MapPin, Info, Loader2, Edit, AlertCircle } from "lucide-react"
+import { Zap, Calculator, MapPin, Info, Loader2, Edit, AlertCircle, FileText, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useCensusYears } from "@/hooks/useCensusYears"
 import {
@@ -43,6 +43,14 @@ export default function DirectServiceOffset() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editPercentage, setEditPercentage] = useState(0)
   const [editIsActive, setEditIsActive] = useState(true)
+
+  // Global percentage reduction state
+  const [globalReduction, setGlobalReduction] = useState({
+    program: 'Paint' as string,
+    year: 2026 as number,
+    percentage: 0,
+  })
+  const [isApplyingGlobal, setIsApplyingGlobal] = useState(false)
 
   const censusYearOptions = useMemo(() => {
     const fromApi = censusYearsData?.years?.map((y) => y) ?? []
@@ -120,6 +128,39 @@ export default function DirectServiceOffset() {
     setEditingId(id)
     setEditPercentage(percentage)
     setEditIsActive(isActive)
+  }
+
+  const handleApplyGlobalReduction = async () => {
+    if (globalReduction.percentage <= 0 || globalReduction.percentage > 100) {
+      toast({
+        title: 'Invalid percentage',
+        description: 'Please enter a percentage between 1 and 100.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsApplyingGlobal(true)
+    try {
+      // TODO: Replace with actual API call when backend is ready
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      toast({
+        title: 'Global reduction applied',
+        description: `Applied ${globalReduction.percentage}% reduction to ${globalReduction.program} for ${globalReduction.year}.`,
+      })
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message?: string }).message)
+          : 'Failed to apply global reduction'
+      toast({
+        title: 'Request failed',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsApplyingGlobal(false)
+    }
   }
 
   const getStatusColor = (isActive: boolean) => {
@@ -246,6 +287,106 @@ export default function DirectServiceOffset() {
               'Create Direct Service Offset'
             )}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Global Percentage Reduction */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calculator className="w-5 h-5" />
+            Global Percentage Reduction
+          </CardTitle>
+          <CardDescription>Apply a global percentage reduction across all communities</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-4 gap-4 items-end">
+            <div className="space-y-2">
+              <Label htmlFor="global-program">Program</Label>
+              <Select
+                value={globalReduction.program}
+                onValueChange={(value) =>
+                  setGlobalReduction({ ...globalReduction, program: value })
+                }
+              >
+                <SelectTrigger id="global-program">
+                  <SelectValue placeholder="Select program" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROGRAMS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="global-year">Year</Label>
+              <Select
+                value={String(globalReduction.year)}
+                onValueChange={(value) =>
+                  setGlobalReduction({ ...globalReduction, year: Number(value) })
+                }
+              >
+                <SelectTrigger id="global-year">
+                  <SelectValue placeholder="Select year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {censusYearOptions.map((y) => (
+                    <SelectItem key={y.id} value={String(y.year)}>
+                      {y.year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="global-reduction">Global % Reduction</Label>
+              <div className="relative">
+                <Input
+                  id="global-reduction"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={globalReduction.percentage}
+                  onChange={(e) =>
+                    setGlobalReduction({ ...globalReduction, percentage: Number(e.target.value) || 0 })
+                  }
+                  placeholder="0"
+                  className="pr-8"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+              </div>
+            </div>
+
+            <Button
+              onClick={handleApplyGlobalReduction}
+              disabled={isApplyingGlobal || globalReduction.percentage === 0}
+              className="bg-black hover:bg-gray-800"
+            >
+              {isApplyingGlobal ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                  Applying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Apply All
+                </>
+              )}
+            </Button>
+          </div>
+
+          <Alert className="bg-gray-50 border-gray-200">
+            <FileText className="h-4 w-4 text-gray-600" />
+            <AlertDescription className="text-gray-700">
+              <span className="font-medium">Calculation:</span> New Required = ceil(Required × (1 - %reduction)). Every community requiring at least 1 site will still require minimum 1 site (cannot be reduced below 1).
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
 

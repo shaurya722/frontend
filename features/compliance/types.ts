@@ -5,6 +5,13 @@ export interface ComplianceCalculation {
   census_year: number;
   census_year_value: number;
   program: string;
+  base_required_sites: number;
+  sites_from_requirements: number;
+  sites_from_adjacent: number;
+  sites_from_events: number;
+  net_direct_service_offset: number;
+  direct_service_offset_percentage: number | null;
+  direct_service_offset_source: string;
   required_sites: number;
   actual_sites: number;
   shortfall: number;
