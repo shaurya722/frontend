@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Calendar, Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 import { PaginationControls } from '@/components/pagination-controls'
 import {
   useCensusYearsList,
@@ -48,6 +49,7 @@ import {
 import type { CensusYear, CensusYearsResponse } from '@/features/census-year/census-years'
 
 export default function CensusYearManagement() {
+  const { toast } = useToast()
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -70,9 +72,46 @@ export default function CensusYearManagement() {
     createMutation.mutate(
       { year },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
+          toast({
+            variant: 'success',
+            title: 'Census year created',
+            description: (result as any)?.message || (result as any)?.detail || `Year ${year} has been created successfully.`,
+          })
           setIsCreateDialogOpen(false)
           setYearInput('')
+        },
+        onError: (error: any) => {
+          const errorData = error?.response?.data || error?.data || {}
+          let errorMessage = error?.message || 'Failed to create census year.'
+          
+          // Handle non_field_errors
+          if (Array.isArray(errorData?.non_field_errors) && errorData.non_field_errors.length > 0) {
+            errorMessage = errorData.non_field_errors.join(', ')
+          } else if (typeof errorData?.error === 'string') {
+            errorMessage = errorData.error
+          } else if (typeof errorData?.message === 'string') {
+            errorMessage = errorData.message
+          } else if (typeof errorData?.detail === 'string') {
+            errorMessage = errorData.detail
+          } else if (errorData && Object.keys(errorData).length > 0) {
+            // Handle field-specific errors like {year: ["census year with this year already exists."]}
+            const fieldErrors = Object.entries(errorData)
+              .filter(([key]) => key !== 'non_field_errors')
+              .map(([field, msgs]) => {
+                if (Array.isArray(msgs)) return `${field}: ${msgs.join(', ')}`
+                if (typeof msgs === 'string') return `${field}: ${msgs}`
+                return `${field}: ${JSON.stringify(msgs)}`
+              })
+              .join('; ')
+            if (fieldErrors) errorMessage = fieldErrors
+          }
+          
+          toast({
+            variant: 'destructive',
+            title: 'Failed to create',
+            description: errorMessage,
+          })
         },
       }
     )
@@ -89,10 +128,46 @@ export default function CensusYearManagement() {
     updateMutation.mutate(
       { id: selectedYear.id, data: { year } },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
+          toast({
+            variant: 'success',
+            title: 'Census year updated',
+            description: (result as any)?.message || (result as any)?.detail || `Year ${year} has been updated successfully.`,
+          })
           setIsEditDialogOpen(false)
           setSelectedYear(null)
           setYearInput('')
+        },
+        onError: (error: any) => {
+          const errorData = error?.response?.data || error?.data || {}
+          let errorMessage = error?.message || 'Failed to update census year.'
+          
+          if (Array.isArray(errorData?.non_field_errors) && errorData.non_field_errors.length > 0) {
+            errorMessage = errorData.non_field_errors.join(', ')
+          } else if (typeof errorData?.error === 'string') {
+            errorMessage = errorData.error
+          } else if (typeof errorData?.message === 'string') {
+            errorMessage = errorData.message
+          } else if (typeof errorData?.detail === 'string') {
+            errorMessage = errorData.detail
+          } else if (errorData && Object.keys(errorData).length > 0) {
+            // Handle field-specific errors like {year: ["census year with this year already exists."]}
+            const fieldErrors = Object.entries(errorData)
+              .filter(([key]) => key !== 'non_field_errors')
+              .map(([field, msgs]) => {
+                if (Array.isArray(msgs)) return `${field}: ${msgs.join(', ')}`
+                if (typeof msgs === 'string') return `${field}: ${msgs}`
+                return `${field}: ${JSON.stringify(msgs)}`
+              })
+              .join('; ')
+            if (fieldErrors) errorMessage = fieldErrors
+          }
+          
+          toast({
+            variant: 'destructive',
+            title: 'Failed to update',
+            description: errorMessage,
+          })
         },
       }
     )
@@ -102,9 +177,34 @@ export default function CensusYearManagement() {
     if (!selectedYear) return
 
     deleteMutation.mutate(selectedYear.id, {
-      onSuccess: () => {
+      onSuccess: (result) => {
+        toast({
+          variant: 'success',
+          title: 'Census year deleted',
+          description: (result as any)?.message || (result as any)?.detail || `Year ${selectedYear.year} has been deleted successfully.`,
+        })
         setIsDeleteDialogOpen(false)
         setSelectedYear(null)
+      },
+      onError: (error: any) => {
+        const errorData = error?.response?.data || error?.data || {}
+        let errorMessage = error?.message || 'Failed to delete census year.'
+        
+        if (Array.isArray(errorData?.non_field_errors) && errorData.non_field_errors.length > 0) {
+          errorMessage = errorData.non_field_errors.join(', ')
+        } else if (typeof errorData?.error === 'string') {
+          errorMessage = errorData.error
+        } else if (typeof errorData?.message === 'string') {
+          errorMessage = errorData.message
+        } else if (typeof errorData?.detail === 'string') {
+          errorMessage = errorData.detail
+        }
+        
+        toast({
+          variant: 'destructive',
+          title: 'Failed to delete',
+          description: errorMessage,
+        })
       },
     })
   }
