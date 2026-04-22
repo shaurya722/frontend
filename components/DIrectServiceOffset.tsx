@@ -72,6 +72,7 @@ export default function DirectServiceOffset() {
         },
       })
       toast({
+        variant: 'success',
         title: 'Offset updated',
         description: 'Direct service offset has been updated successfully.',
       })
@@ -145,6 +146,7 @@ export default function DirectServiceOffset() {
         is_active: true,
       })
       toast({
+        variant: 'success',
         title: 'Global reduction applied',
         description: `Applied ${globalReduction.percentage}% reduction to ${globalReduction.program} for ${globalReduction.year}.`,
       })
@@ -198,6 +200,7 @@ export default function DirectServiceOffset() {
         is_active: true,
       })
       toast({
+        variant: 'success',
         title: 'Community override saved',
         description: `${communityName} now has ${editingCommunityPercentage}% reduction.`,
       })
