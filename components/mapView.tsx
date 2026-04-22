@@ -226,7 +226,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         id: communityId,
         payload: { boundary: geometry },
       });
-      toast({ title: 'Boundary updated', description: 'Polygon geometry was saved.' });
+      toast({ variant:'success', title: 'Boundary updated', description: 'Polygon geometry was saved.' });
     } catch (e: unknown) {
       const message =
         e && typeof e === 'object' && 'message' in e
@@ -347,6 +347,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         boundary: pendingMapBoundary,
       });
       toast({
+        variant:'success',
         title: "Map community saved",
         description: `Boundary linked to community ${selectedCreateCommunityId}.`,
       });
@@ -394,6 +395,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         },
       });
       toast({
+        variant:'success',
         title: "Updated",
         description: `PATCH for community id ${selectedEditCommunityId}.`,
       });
@@ -418,6 +420,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     try {
       await deleteMapCommunityMutation.mutateAsync(id);
       toast({
+        variant:'success',
         title: "Deleted",
         description: "Map community was removed.",
       });
