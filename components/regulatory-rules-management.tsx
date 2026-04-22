@@ -37,15 +37,27 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown, Loader2 } from 'lucide-react'
 import type { RegulatoryRule } from '@/features/regulatory-rules'
 import { useRegulatoryRules, useRegulatoryRule, useUpdateRegulatoryRule, useDeleteRegulatoryRule, useCreateRegulatoryRule } from '@/features/regulatory-rules'
 import { useCensusYears } from '@/features/communities'
 import { PaginationControls } from '@/components/pagination-controls'
+import { useToast } from '@/hooks/use-toast'
 
 interface RuleParameters {
   // Site Calculation Parameters
@@ -106,6 +118,8 @@ const mapRuleToFormValues = (rule: RegulatoryRule) => ({
 export default function RegulatoryRulesManagement({
   currentUser,
 }: RegulatoryRulesManagementProps) {
+  const { toast } = useToast()
+
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -141,10 +155,6 @@ export default function RegulatoryRulesManagement({
 
   // Create dialog state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-
-  // Show success/error messages temporarily
-  const [successMessage, setSuccessMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
 
   // Debounce search input
   useEffect(() => {
@@ -277,20 +287,6 @@ export default function RegulatoryRulesManagement({
     }
   }, [censusYearsData])
 
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(''), 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [successMessage])
-
-  useEffect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => setErrorMessage(''), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [errorMessage])
-
   // Populate edit form when rule data is loaded
   useEffect(() => {
     if (editingRuleData && isEditDialogOpen) {
@@ -336,9 +332,17 @@ export default function RegulatoryRulesManagement({
       setEditingRuleId(null)
       setIsEditDialogOpen(false)
       editForm.reset()
-      setSuccessMessage(`Regulatory rule "${data.name || data.regulatory_rule}" updated successfully`)
+      toast({
+        variant: 'success',
+        title: 'Regulatory rule updated',
+        description: `Regulatory rule "${data.name || data.regulatory_rule}" updated successfully`,
+      })
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to update regulatory rule')
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update',
+        description: error.message || 'Failed to update regulatory rule',
+      })
     }
   }
 
@@ -368,9 +372,17 @@ export default function RegulatoryRulesManagement({
       setIsCreateDialogOpen(false)
       createForm.reset()
       refetch()
-      setSuccessMessage(`Regulatory rule "${data.regulatory_rule}" created successfully`)
+      toast({
+        variant: 'success',
+        title: 'Regulatory rule created',
+        description: `Regulatory rule "${data.regulatory_rule}" created successfully`,
+      })
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to create regulatory rule')
+      toast({
+        variant: 'destructive',
+        title: 'Failed to create',
+        description: error.message || 'Failed to create regulatory rule',
+      })
     }
   }
 
@@ -385,12 +397,20 @@ export default function RegulatoryRulesManagement({
 
     try {
       await deleteMutation.mutateAsync(deleteRuleId)
-      setSuccessMessage(`Regulatory rule "${deleteRuleName}" deleted successfully`)
       setIsDeleteDialogOpen(false)
       setDeleteRuleId(null)
       setDeleteRuleName('')
+      toast({
+        variant: 'success',
+        title: 'Regulatory rule deleted',
+        description: `Regulatory rule "${deleteRuleName}" deleted successfully`,
+      })
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to delete regulatory rule')
+      toast({
+        variant: 'destructive',
+        title: 'Failed to delete',
+        description: error.message || 'Failed to delete regulatory rule',
+      })
     }
   }
 
@@ -529,21 +549,92 @@ export default function RegulatoryRulesManagement({
 
   return (
     <div className='space-y-6'>
-      {/* Success/Error Messages */}
-      {successMessage && (
-        <Alert className="bg-green-50 border-green-200">
-          <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
-        </Alert>
-      )}
-      {errorMessage && (
-        <Alert className="bg-red-50 border-red-200">
-          <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
-        </Alert>
-      )}
+      {/* Filters and Search */}
+      <div className='grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 mb-6 pt-3'>
+        <div className='relative'>
+          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Search rules..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={selectedProgram} onValueChange={setSelectedProgram}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='all'>All Programs</SelectItem>
+            <SelectItem value='Paint'>Paint</SelectItem>
+            <SelectItem value='Solvents'>Solvents</SelectItem>
+            <SelectItem value='Pesticides'>Pesticides</SelectItem>
+            <SelectItem value='Lighting'>Lighting</SelectItem>
+            <SelectItem value='All'>All (Offsets)</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='all'>All Categories</SelectItem>
+            <SelectItem value='HSP'>
+              HSP (Hazardous & Special Products)
+            </SelectItem>
+            <SelectItem value='EEE'>
+              EEE (Electrical & Electronic Equipment)
+            </SelectItem>
+            <SelectItem value='Offset'>Offset Rules</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedRuleType} onValueChange={setSelectedRuleType}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='all'>All Rule Types</SelectItem>
+            <SelectItem value='Site Requirements'>
+              Site Requirements
+            </SelectItem>
+            <SelectItem value='Events'>Events</SelectItem>
+            <SelectItem value='Reallocation'>Reallocation</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+          <SelectTrigger>
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="true">Active</SelectItem>
+            <SelectItem value="false">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedCensusYear} onValueChange={setSelectedCensusYear}>
+          <SelectTrigger>
+            <SelectValue placeholder="Filter by census year" />
+          </SelectTrigger>
+          <SelectContent>
+            {censusYearsData?.years?.map((year) => (
+              <SelectItem key={year.id} value={year.year.toString()}>
+                {year.year}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button 
+          onClick={() => setIsCreateDialogOpen(true)}
+          className="bg-black hover:bg-black/80"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Create Rule
+        </Button>
+      </div>
 
-      {/* Header with Stats */}
-      {/* <div className='grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
-        <Card>
+      {/* Stats Cards */}
+      <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6'>
+        <Card>  
           <CardHeader className='pb-3'>
             <CardTitle className='text-sm font-medium text-muted-foreground'>
               Total Rules
@@ -599,7 +690,7 @@ export default function RegulatoryRulesManagement({
             <div className='text-2xl font-bold'>{ruleStats.programs}</div>
           </CardContent>
         </Card>
-      </div> */}
+      </div>
 
       {/* Main Rules Table */}
       <Card>
@@ -1437,6 +1528,38 @@ export default function RegulatoryRulesManagement({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the regulatory rule{' '}
+              <span className="font-semibold">{deleteRuleName}</span>. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setIsDeleteDialogOpen(false)
+              setDeleteRuleId(null)
+              setDeleteRuleName('')
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={deleteMutation.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteMutation.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   )
