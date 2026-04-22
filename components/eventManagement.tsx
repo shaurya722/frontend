@@ -40,6 +40,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Calendar, CheckCircle, AlertTriangle, Zap } from "lucide-react";
 import { useCensusYears } from "@/features/communities/hooks";
 import { useApproveEvents, useEventListing } from "@/features/events/hooks";
+import { useToast } from "@/hooks/use-toast";
 
 interface Event {
   id: number;
@@ -69,6 +70,8 @@ interface ShortfallCommunity {
 }
 
 export default function ToolBEventApplication() {
+  const { toast } = useToast();
+
   const [shortfallCommunities, setShortfallCommunities] = useState<
     ShortfallCommunity[]
   >([]);
@@ -82,10 +85,6 @@ export default function ToolBEventApplication() {
   const [selectedCommunity, setSelectedCommunity] =
     useState<ShortfallCommunity | null>(null);
   const [selectedEvents, setSelectedEvents] = useState<number[]>([]);
-
-  // UI state
-  const [successMessage, setSuccessMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
 
   // Search and pagination state
   const [searchQuery, setSearchQuery] = useState("");
@@ -217,19 +216,19 @@ export default function ToolBEventApplication() {
       );
 
       // Call API for unchecked events with false and selected with true
-      await Promise.all([
+      const results = await Promise.all([
         siteIdsUnchecked.length > 0
           ? approveEventsMutation.mutateAsync({
               site_ids: siteIdsUnchecked,
               is_event: false,
             })
-          : Promise.resolve(),
+          : Promise.resolve(null),
         siteIdsSelected.length > 0
           ? approveEventsMutation.mutateAsync({
               site_ids: siteIdsSelected,
               is_event: true,
             })
-          : Promise.resolve(),
+          : Promise.resolve(null),
       ]);
 
       // Update local state
@@ -244,11 +243,22 @@ export default function ToolBEventApplication() {
       setIsEventDialogOpen(false);
       setSelectedCommunity(null);
       setSelectedEvents([]);
-      setSuccessMessage(
-        `Events updated successfully for ${selectedCommunity.name}`,
-      );
+
+      // Show toast with the response message
+      const result = results.find((r) => r?.message);
+      if (result?.message) {
+        toast({
+          variant: "success",
+          title: "Events updated",
+          description: result.message,
+        });
+      }
     } catch (error: any) {
-      setErrorMessage(error.message || "Failed to update events");
+      toast({
+        variant: "destructive",
+        title: "Failed to update events",
+        description: error.message || "Failed to update events",
+      });
     }
   };
 
