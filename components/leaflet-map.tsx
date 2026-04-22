@@ -69,6 +69,8 @@ interface LeafletMapProps {
   showMapCommunities?: boolean
   /** Fired when user clicks a server-drawn map community polygon */
   onMapCommunityClick?: (community: MapCommunity) => void
+  /** Fired when a server-rendered community polygon is edited on the map */
+  onPolygonEdited?: (id: string, geometry: any) => void
 }
 
 export default function LeafletMap({
@@ -81,6 +83,7 @@ export default function LeafletMap({
   mapCommunities = [],
   showMapCommunities = true,
   onMapCommunityClick,
+  onPolygonEdited,
 }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
@@ -218,16 +221,132 @@ export default function LeafletMap({
         console.warn('Failed to restore saved polygon', e)
       }
 
-      // Handle polygon creation
-      map.on((window as any).L.Draw.Event.CREATED, function (event: any) {
+      // Handle polygon creation with overlap prevention
+      map.on((window as any).L.Draw.Event.CREATED, async function (event: any) {
         const layer = event.layer
         const geoJSON = layer.toGeoJSON()
-        
-        console.log('Polygon created:', geoJSON)
-        
-        // Add the drawn polygon to the map
+
+        console.log('Polygon created (candidate):', geoJSON)
+
+        // Helper: fast bounds overlap check
+        const boundsOverlap = (a: any, b: any) => {
+          try {
+            const ab = a.getBounds?.()
+            const bb = b.getBounds?.()
+            return ab && bb ? ab.intersects(bb) : true
+          } catch {
+            return true
+          }
+        }
+
+        // Helpers: basic geometry intersection (Polygon/MultiPolygon) without external deps
+        type LngLat = [number, number]
+        const toRings = (geom: any): LngLat[][] => {
+          if (!geom) return []
+          if (geom.type === 'Polygon') return geom.coordinates as LngLat[][]
+          if (geom.type === 'MultiPolygon') {
+            const out: LngLat[][] = []
+            for (const poly of geom.coordinates as LngLat[][][]) out.push(...poly)
+            return out
+          }
+          return []
+        }
+        const pointInRing = (pt: LngLat, ring: LngLat[]): boolean => {
+          // Ray casting in lon/lat space (good enough for small regions)
+          let inside = false
+          for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const xi = ring[i][0], yi = ring[i][1]
+            const xj = ring[j][0], yj = ring[j][1]
+            const intersect = ((yi > pt[1]) !== (yj > pt[1])) && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-12) + xi)
+            if (intersect) inside = !inside
+          }
+          return inside
+        }
+        const onSegment = (a: LngLat, b: LngLat, p: LngLat): boolean => {
+          const cross = (p[1]-a[1])*(b[0]-a[0]) - (p[0]-a[0])*(b[1]-a[1])
+          if (Math.abs(cross) > 1e-12) return false
+          const dot = (p[0]-a[0])*(b[0]-a[0]) + (p[1]-a[1])*(b[1]-a[1])
+          if (dot < 0) return false
+          const sqLen = (b[0]-a[0])**2 + (b[1]-a[1])**2
+          return dot <= sqLen
+        }
+        const segsIntersect = (p1: LngLat, p2: LngLat, q1: LngLat, q2: LngLat): boolean => {
+          const orient = (a: LngLat, b: LngLat, c: LngLat) => Math.sign((b[1]-a[1])*(c[0]-b[0]) - (b[0]-a[0])*(c[1]-b[1]))
+          const o1 = orient(p1, p2, q1)
+          const o2 = orient(p1, p2, q2)
+          const o3 = orient(q1, q2, p1)
+          const o4 = orient(q1, q2, p2)
+          if (o1 !== o2 && o3 !== o4) return true
+          if (o1 === 0 && onSegment(p1, p2, q1)) return true
+          if (o2 === 0 && onSegment(p1, p2, q2)) return true
+          if (o3 === 0 && onSegment(q1, q2, p1)) return true
+          if (o4 === 0 && onSegment(q1, q2, p2)) return true
+          return false
+        }
+        const ringsIntersect = (r1: LngLat[], r2: LngLat[]): boolean => {
+          // Edge intersections
+          for (let i = 0; i < r1.length - 1; i++) {
+            for (let j = 0; j < r2.length - 1; j++) {
+              if (segsIntersect(r1[i], r1[i+1], r2[j], r2[j+1])) return true
+            }
+          }
+          // Containment: any vertex of one inside the other
+          if (pointInRing(r1[0], r2)) return true
+          if (pointInRing(r2[0], r1)) return true
+          return false
+        }
+        const geometriesIntersect = (geomA: any, geomB: any): boolean => {
+          const ringsA = toRings(geomA)
+          const ringsB = toRings(geomB)
+          for (const ra of ringsA) {
+            for (const rb of ringsB) {
+              if (ringsIntersect(ra, rb)) return true
+            }
+          }
+          return false
+        }
+
+        // Collect existing layers: user-drawn and server-rendered communities
+        const existingLayers: any[] = []
+        try {
+          const drawnLayers = drawnItemsRef.current?.getLayers?.() ?? []
+          existingLayers.push(...drawnLayers)
+        } catch {}
+        try {
+          existingLayers.push(...communityLayersRef.current)
+        } catch {}
+
+        // Check overlap against all existing layers
+        for (const existing of existingLayers) {
+          try {
+            // Quick reject with bounds
+            if (!boundsOverlap(layer, existing)) continue
+
+            const existingGj = existing.toGeoJSON?.()
+            const existingGeom = existingGj?.geometry
+            if (!existingGeom) continue
+
+            const intersects = geometriesIntersect(geoJSON.geometry, existingGeom)
+            if (intersects) {
+              // Prevent adding overlapping polygon
+              try { layer.remove?.() } catch {}
+              try {
+                // Provide feedback to user
+                alert('Cannot add polygon: it overlaps an existing area.')
+              } catch {}
+              return
+            }
+          } catch {
+            // On any unexpected error, be conservative and block
+            try { layer.remove?.() } catch {}
+            try { alert('Cannot add polygon due to an internal validation error.') } catch {}
+            return
+          }
+        }
+
+        // Passed overlap checks — add the drawn polygon to the map
         drawnItems.addLayer(layer)
-        
+
         // Call the callback with the GeoJSON geometry
         if (onPolygonCreate) {
           onPolygonCreate(geoJSON.geometry)
@@ -240,18 +359,6 @@ export default function LeafletMap({
         } catch (e) {
           console.warn('Failed to save polygon', e)
         }
-        
-        // Optional: Send to backend
-        // fetch('/api/community/', {
-        //   method: 'POST',
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //   },
-        //   body: JSON.stringify({
-        //     name: 'Community 1',
-        //     boundary: geoJSON.geometry,
-        //   }),
-        // })
       })
 
       // Handle polygon deletion
@@ -270,13 +377,21 @@ export default function LeafletMap({
         }
       })
 
-      // Handle polygon edit - update saved geometry
+      // Handle polygon edit - update saved geometry and notify parent (for server polygons)
       map.on((window as any).L.Draw.Event.EDITED, function (event: any) {
         const layers = event.layers
         try {
           layers.eachLayer(function (layer: any) {
             const edited = layer.toGeoJSON()?.geometry
-            if (edited && typeof window !== 'undefined') {
+            if (!edited) return
+            // If this layer has an id in its feature properties, treat it as a server polygon and notify parent
+            const id = layer?.feature?.properties?.id as string | undefined
+            if (id && onPolygonEdited) {
+              onPolygonEdited(id, edited)
+              return
+            }
+            // Fallback: persist client-drawn polygon
+            if (typeof window !== 'undefined') {
               window.localStorage.setItem('drawnPolygon', JSON.stringify(edited))
               if (onPolygonCreate) onPolygonCreate(edited)
             }
@@ -381,7 +496,13 @@ export default function LeafletMap({
             onMapCommunityClick(c)
           })
         }
+        // Add to map and also to drawnItems so the edit toolbar can edit server polygons
         gj.addTo(map)
+        try {
+          gj.eachLayer?.((layer: any) => {
+            drawnItemsRef.current?.addLayer?.(layer)
+          })
+        } catch {}
         communityLayersRef.current.push(gj)
       }
     }

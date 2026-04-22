@@ -36,7 +36,7 @@ export const useDashboardStats = (year?: number) => {
   const { data: mapData, isLoading: mapLoading } = useQuery({
     queryKey: ['dashboardMapData', year],
     queryFn: async () => {
-      const apiUrl = new URL('https://arc-celery-backend-qg4h8ah9c-shaurya722s-projects.vercel.app/api/community/map-data/')
+      const apiUrl = new URL('http://192.168.3.154:8000/api/community/map-data/')
       if (year) {
         apiUrl.searchParams.set('census_year', year.toString())
       }
