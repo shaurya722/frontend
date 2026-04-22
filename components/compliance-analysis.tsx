@@ -154,6 +154,7 @@ export default function ComplianceAnalysis() {
     try {
       await recalculateCompliance(censusYearEntry.id)
       toast({
+        variant:'success',
         title: 'Calculation complete',
         description: `Compliance recalculated for ${censusYearEntry.year}.`,
       })
