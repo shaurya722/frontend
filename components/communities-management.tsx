@@ -329,8 +329,6 @@ export default function CommunitiesManagement() {
   // })
 
   // UI state
-  const [successMessage, setSuccessMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
   const [importErrorDetails, setImportErrorDetails] = useState<{ error?: string; expected_headers?: string[]; provided_headers?: string[] } | null>(null)
   const [importUploadError, setImportUploadError] = useState<string | null>(null)
   const { toast } = useToast()
@@ -392,21 +390,6 @@ export default function CommunitiesManagement() {
   }, [censusYearsData])
 
   useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(''), 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [successMessage])
-
-  useEffect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => setErrorMessage(''), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [errorMessage])
-
-  // Get current user from localStorage
-  useEffect(() => {
     const userData = localStorage.getItem('user')
     if (userData) {
     }
@@ -463,9 +446,40 @@ export default function CommunitiesManagement() {
       setDialogMode(null)
       setSelectedCommunity(null)
       setEditingCommunityId(null)
-      setSuccessMessage(`Community "${data.name}" updated successfully`)
+      toast({
+        variant: 'success',
+        title: 'Community updated',
+        description: `Community "${data.name}" updated successfully`,
+      })
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to update community')
+      const errorData = error?.response?.data || error?.data || {}
+      let errorMessage = error?.message || 'Failed to update community.'
+      
+      if (Array.isArray(errorData?.non_field_errors) && errorData.non_field_errors.length > 0) {
+        errorMessage = errorData.non_field_errors.join(', ')
+      } else if (typeof errorData?.error === 'string') {
+        errorMessage = errorData.error
+      } else if (typeof errorData?.message === 'string') {
+        errorMessage = errorData.message
+      } else if (typeof errorData?.detail === 'string') {
+        errorMessage = errorData.detail
+      } else if (errorData && Object.keys(errorData).length > 0) {
+        const fieldErrors = Object.entries(errorData)
+          .filter(([key]) => key !== 'non_field_errors')
+          .map(([field, msgs]) => {
+            if (Array.isArray(msgs)) return `${field}: ${msgs.join(', ')}`
+            if (typeof msgs === 'string') return `${field}: ${msgs}`
+            return `${field}: ${JSON.stringify(msgs)}`
+          })
+          .join('; ')
+        if (fieldErrors) errorMessage = fieldErrors
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update',
+        description: errorMessage,
+      })
     }
   }
 
@@ -495,9 +509,40 @@ export default function CommunitiesManagement() {
 
       setDialogMode(null)
       setSelectedCommunity(null)
-      setSuccessMessage(`Community "${data.name}" added successfully`)
+      toast({
+        variant: 'success',
+        title: 'Community created',
+        description: `Community "${data.name}" added successfully`,
+      })
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to add community')
+      const errorData = error?.response?.data || error?.data || {}
+      let errorMessage = error?.message || 'Failed to create community.'
+      
+      if (Array.isArray(errorData?.non_field_errors) && errorData.non_field_errors.length > 0) {
+        errorMessage = errorData.non_field_errors.join(', ')
+      } else if (typeof errorData?.error === 'string') {
+        errorMessage = errorData.error
+      } else if (typeof errorData?.message === 'string') {
+        errorMessage = errorData.message
+      } else if (typeof errorData?.detail === 'string') {
+        errorMessage = errorData.detail
+      } else if (errorData && Object.keys(errorData).length > 0) {
+        const fieldErrors = Object.entries(errorData)
+          .filter(([key]) => key !== 'non_field_errors')
+          .map(([field, msgs]) => {
+            if (Array.isArray(msgs)) return `${field}: ${msgs.join(', ')}`
+            if (typeof msgs === 'string') return `${field}: ${msgs}`
+            return `${field}: ${JSON.stringify(msgs)}`
+          })
+          .join('; ')
+        if (fieldErrors) errorMessage = fieldErrors
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: 'Failed to create',
+        description: errorMessage,
+      })
     }
   }
 
@@ -610,6 +655,7 @@ export default function CommunitiesManagement() {
     try {
       await bulkImportMutation.mutateAsync(selectedImportFile)
       toast({
+        variant: 'success',
         title: 'Import complete',
         description: 'Community data processed successfully.',
       })
@@ -637,11 +683,42 @@ export default function CommunitiesManagement() {
 
     try {
       await deleteMutation.mutateAsync(communityToDelete.id.toString())
-      setSuccessMessage(`Community "${communityToDelete.community_name}" deleted successfully`)
       setIsDeleteDialogOpen(false)
       setCommunityToDelete(null)
+      toast({
+        variant: 'success',
+        title: 'Community deleted',
+        description: `Community "${communityToDelete.community_name}" deleted successfully`,
+      })
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to delete community')
+      const errorData = error?.response?.data || error?.data || {}
+      let errorMessage = error?.message || 'Failed to delete community.'
+      
+      if (Array.isArray(errorData?.non_field_errors) && errorData.non_field_errors.length > 0) {
+        errorMessage = errorData.non_field_errors.join(', ')
+      } else if (typeof errorData?.error === 'string') {
+        errorMessage = errorData.error
+      } else if (typeof errorData?.message === 'string') {
+        errorMessage = errorData.message
+      } else if (typeof errorData?.detail === 'string') {
+        errorMessage = errorData.detail
+      } else if (errorData && Object.keys(errorData).length > 0) {
+        const fieldErrors = Object.entries(errorData)
+          .filter(([key]) => key !== 'non_field_errors')
+          .map(([field, msgs]) => {
+            if (Array.isArray(msgs)) return `${field}: ${msgs.join(', ')}`
+            if (typeof msgs === 'string') return `${field}: ${msgs}`
+            return `${field}: ${JSON.stringify(msgs)}`
+          })
+          .join('; ')
+        if (fieldErrors) errorMessage = fieldErrors
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: 'Failed to delete',
+        description: errorMessage,
+      })
     }
   }
 
@@ -660,17 +737,7 @@ export default function CommunitiesManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Success/Error Messages */}
-      {successMessage && (
-        <Alert className="bg-green-50 border-green-200">
-          <AlertDescription className="text-green-800">{successMessage}</AlertDescription>
-        </Alert>
-      )}
-      {errorMessage && (
-        <Alert className="bg-red-50 border-red-200">
-          <AlertDescription className="text-red-800">{errorMessage}</AlertDescription>
-        </Alert>
-      )}
+      {/* Import Error Details */}
       {importErrorDetails && (
         <Alert variant="destructive" className="border-red-300 bg-red-50">
           <div className="space-y-2">
