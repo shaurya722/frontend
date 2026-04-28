@@ -168,6 +168,14 @@ const buildMaterialsSectorsPayload = (siteData: CollectionSite) => {
   }
 }
 
+// Safely extract a user-friendly message from various API response shapes
+const extractMessage = (res: any, fallback: string) => {
+  if (!res) return fallback
+  if (typeof res.message === 'string') return res.message
+  if (typeof res.detail === 'string') return res.detail
+  return fallback
+}
+
 export default function SiteManagement() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -176,7 +184,7 @@ export default function SiteManagement() {
   const [operatorType, setOperatorType] = useState<string>('all')
   const [year, setYear] = useState<number | undefined>(undefined)
   const [page, setPage] = useState(1)
-  const limit = 10
+  const limit = 25
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -371,12 +379,12 @@ export default function SiteManagement() {
 
         console.log('Transformed API data:', apiData)
         console.log('Calling createSiteMutation.mutateAsync')
-        const result = await createSiteMutation.mutateAsync(apiData)
+        const result: any = await createSiteMutation.mutateAsync(apiData)
   console.log('Site created successfully:', result)
         toast({
           variant: 'success',
           title: 'Site created',
-          description: result?.message || result?.detail || 'New collection site has been added successfully.',
+          description: extractMessage(result, 'New collection site has been added successfully.'),
         })
       } else {
         // Update site
@@ -389,12 +397,12 @@ export default function SiteManagement() {
 
         console.log('Transformed update API data:', apiData)
         console.log('Calling updateSiteMutation.mutateAsync with site ID:', editingSiteId)
-        const result = await updateSiteMutation.mutateAsync({ id: editingSiteId?.toString() || '', data: apiData })
+        const result: any = await updateSiteMutation.mutateAsync({ id: editingSiteId?.toString() || '', data: apiData })
         console.log('Site updated successfully:', result)
         toast({
           variant: 'success',
           title: 'Site updated',
-          description: result?.message || result?.detail || 'Collection site has been updated successfully.',
+          description: extractMessage(result, 'Collection site has been updated successfully.'),
         })
       }
       setIsDialogOpen(false)
@@ -452,11 +460,11 @@ export default function SiteManagement() {
     if (!siteToDelete) return
 
     try {
-      const result = await deleteMutation.mutateAsync(siteToDelete.id)
+      const result: any = await deleteMutation.mutateAsync(siteToDelete.id)
       toast({
         variant: 'success',
         title: 'Site deleted',
-        description: result?.message || result?.detail || `"${siteToDelete.site_name}" has been deleted successfully.`,
+        description: extractMessage(result, `"${siteToDelete.site_name}" has been deleted successfully.`),
       })
       setIsDeleteDialogOpen(false)
       setSiteToDelete(null)

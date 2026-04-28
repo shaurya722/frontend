@@ -111,7 +111,7 @@ const BASIC_REQUIRED_FIELDS: RequiredFieldMeta[] = [
   { field: 'name', label: 'Site name' },
   { field: 'site_type', label: 'Site type' },
   { field: 'operator_type', label: 'Operator type' },
-  { field: 'address', label: 'Address' },
+  // { field: 'address', label: 'Address' },
   { field: 'municipality_id', label: 'Community' },
 ]
 
@@ -458,7 +458,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
               </div>
             </div>
 
-            <div className='space-y-2'>
+            {/* <div className='space-y-2'>
               <Label htmlFor='address'>Address *</Label>
               <Input
                 id='address'
@@ -472,7 +472,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                 required
               />
               {renderErrorMessage('address')}
-            </div>
+            </div> */}
 
             <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
               <div className='space-y-2'>

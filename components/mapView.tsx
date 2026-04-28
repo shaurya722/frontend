@@ -159,16 +159,16 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     municipality: "all",
     operatorTypes: [] as string[],
     siteTypes: [] as string[],
-    performancePeriod: "2035",
+    performancePeriod: "",
     tier: "all",
     search: "",
     minPopulation: "",
     maxPopulation: "",
     hasCoordinates: "all", // 'all', 'with', 'without'
     page: 1,
-    limit: 30,
+    limit: 1000,
     municipalities_page: 1,
-    municipalities_limit: 30,
+    municipalities_limit: 1000,
   });
 
   const [searchLocation, setSearchLocation] = useState("");
@@ -1715,15 +1715,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Edit map community</DialogTitle>
-            <DialogDescription>
-              Map record id (DELETE/PATCH URL):{" "}
-              <code className="text-xs break-all">
-                {editingMapCommunity?.id ?? "—"}
-              </code>
-              . Search below to set{" "}
-              <code className="text-xs">community_id</code> (and name) in the
-              PATCH body.
-            </DialogDescription>
+            
           </DialogHeader>
           <div className="space-y-3 py-2 flex-1 min-h-0 flex flex-col">
             <div className="space-y-1">
