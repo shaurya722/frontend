@@ -40,6 +40,7 @@ const breadcrumbRoutes: Record<string, string> = {
   Overview: '/dashboard',
   'Map View': '/dashboard/map',
   'Compliance Analysis': '/dashboard/compliance',
+  'Compliance Reports': '/dashboard/compliance-reports',
   'Site Management': '/dashboard/sites',
   Communities: '/dashboard/communities',
   'Communities Management': '/dashboard/communities',

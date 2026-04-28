@@ -387,8 +387,8 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
   const handleMapCommunityClick = useCallback((c: MapCommunity) => {
     setEditingMapCommunity(c);
     setSelectedEditCommunityId(c.id);
-    setEditCommunitySearch(c.name);
-    setDebouncedEditCommunitySearch(c.name);
+    setEditCommunitySearch("");
+    setDebouncedEditCommunitySearch("");
     setEditMapCommunityOpen(true);
   }, []);
 
@@ -1733,17 +1733,16 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       >
         <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Edit map community</DialogTitle>
-            
+            <DialogTitle>{editingMapCommunity?.name}</DialogTitle>
+            <DialogDescription>Assign Community</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2 flex-1 min-h-0 flex flex-col">
             <div className="space-y-1">
-              <Label htmlFor="edit-community-search">Search communities</Label>
               <Input
                 id="edit-community-search"
                 value={editCommunitySearch}
                 onChange={(e) => setEditCommunitySearch(e.target.value)}
-                placeholder="Filter by name…"
+                placeholder="Search Community"
               />
             </div>
             {editAvailableLoading ? (
@@ -1778,20 +1777,12 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                             </Badge>
                           ) : null}
                         </div>
-                        <div className="font-mono text-[11px] text-muted-foreground break-all">
-                          {c.id}
-                        </div>
                       </button>
                     ))
                   )}
                 </div>
               </ScrollArea>
             )}
-            {selectedEditCommunityId ? (
-              <p className="text-xs text-muted-foreground font-mono break-all">
-                PATCH body community_id: {selectedEditCommunityId}
-              </p>
-            ) : null}
           </div>
           <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
             <Button
@@ -1801,7 +1792,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               onClick={() => void handleConfirmDeleteMapCommunity()}
               disabled={deleteMapCommunityMutation.isPending}
             >
-              Delete…
+              Delete
             </Button>
             <div className="flex gap-2 sm:ml-auto">
               <Button

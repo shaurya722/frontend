@@ -148,6 +148,12 @@ export function AppSidebar() {
           href: "/dashboard/compliance",
           visible: true,
         },
+        {
+          title: "Compliance Reports",
+          icon: FileText,
+          href: "/dashboard/compliance-reports",
+          visible: true,
+        },
       ],
     },
     {
