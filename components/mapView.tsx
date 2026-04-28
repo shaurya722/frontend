@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -127,9 +128,6 @@ interface MapLayer {
 
 export default function MapView({ sites, municipalities }: MapViewProps) {
   const { toast } = useToast();
-  // Get current performance year (default to current year)
-  const currentYear = new Date().getFullYear();
-
   const [selectedSite, setSelectedSite] = useState<CollectionSite | null>(null);
   const [selectedLegendType, setSelectedLegendType] = useState<string | null>(
     null,
@@ -191,6 +189,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     useState("");
   const [selectedEditCommunityId, setSelectedEditCommunityId] = useState("");
   const [deleteMapCommunityOpen, setDeleteMapCommunityOpen] = useState(false);
+  const [unsavedPolygonClearedAt, setUnsavedPolygonClearedAt] = useState(0);
 
   // API data state
   const [apiData, setApiData] = useState<MapDataResponse | null>(null);
@@ -271,10 +270,15 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     if (censusYearsData) {
       const years = censusYearsData.years?.map((item) => item.year) || [];
       setAvailableYears(years.sort((a: number, b: number) => b - a));
-    } else {
-      setAvailableYears([2021, 2022, 2023, 2024, 2025]);
     }
   }, [censusYearsData]);
+
+  // Auto-select latest census year when available years load
+  useEffect(() => {
+    if (availableYears.length > 0 && !mapFilters.performancePeriod) {
+      setMapFilters((prev) => ({ ...prev, performancePeriod: String(availableYears[0]) }));
+    }
+  }, [availableYears]);
 
   // Fetch data from Django API
   useEffect(() => {
@@ -370,6 +374,14 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     setPendingMapBoundary(null);
     setSelectedCreateCommunityId("");
     setSaveCommunitySearch("");
+    setUnsavedPolygonClearedAt(Date.now());
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('drawnPolygon');
+      }
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleMapCommunityClick = useCallback((c: MapCommunity) => {
@@ -449,7 +461,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       municipality: "all",
       operatorTypes: [],
       siteTypes: [],
-      performancePeriod: availableYears.length > 0 ? availableYears[0].toString() : currentYear.toString(),
+      performancePeriod: availableYears.length > 0 ? availableYears[0].toString() : "",
       tier: "all",
       search: "",
       minPopulation: "",
@@ -1043,24 +1055,22 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 <Label className="text-xs text-muted-foreground">
                   Community
                 </Label>
-                <Select
+                <SearchableSelect
                   value={mapFilters.municipality}
                   onValueChange={(value) =>
                     setMapFilters({ ...mapFilters, municipality: value })
                   }
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Community" />
-                  </SelectTrigger>
-                  <SelectContent className="z-100000">
-                    <SelectItem value="all">All</SelectItem>
-                    {communitiesDropdown?.communities?.map((community) => (
-                      <SelectItem key={community.id} value={community.name}>
-                        {community.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Community"
+                  searchPlaceholder="Search community..."
+                  triggerClassName="h-9"
+                  options={[
+                    { value: 'all', label: 'All' },
+                    ...(communitiesDropdown?.communities?.map((community) => ({
+                      value: community.name,
+                      label: community.name,
+                    })) ?? []),
+                  ]}
+                />
               </div>
             
                 <Button variant="outline">Export</Button>
@@ -1251,6 +1261,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   filters={mapFilters}
                   mapCommunities={mapCommunitiesList}
                   onPolygonEdited={handleMapPolygonEdited}
+                  unsavedPolygonClearedAt={unsavedPolygonClearedAt}
                   // layers={mapLayers}
                 />
               </Suspense>
@@ -1605,6 +1616,14 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
             setPendingMapBoundary(null);
             setSelectedCreateCommunityId("");
             setSaveCommunitySearch("");
+            setUnsavedPolygonClearedAt(Date.now());
+            try {
+              if (typeof window !== 'undefined') {
+                window.localStorage.removeItem('drawnPolygon');
+              }
+            } catch {
+              /* ignore */
+            }
           }
         }}
       >

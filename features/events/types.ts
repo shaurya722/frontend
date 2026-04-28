@@ -17,12 +17,16 @@ export interface EventListingCommunity {
 }
 
 export interface EventListingResponse {
+  count: number
+  next: string | null
+  previous: string | null
   results: EventListingCommunity[]
 }
 
 export interface EventListingFilters {
   year: number
   search?: string
+  sort?: string
   page?: number
   limit?: number
 }

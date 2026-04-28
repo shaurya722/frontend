@@ -68,8 +68,8 @@ import {
   Calendar,
   CalendarDays,
   ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
+  ChevronUp,
+  ChevronDown,
   Building2,
 } from 'lucide-react'
 
@@ -184,7 +184,11 @@ export default function SiteManagement() {
   const [operatorType, setOperatorType] = useState<string>('all')
   const [year, setYear] = useState<number | undefined>(undefined)
   const [page, setPage] = useState(1)
-  const limit = 25
+  const [limit, setLimit] = useState(10)
+
+  // Sort state
+  const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
+  const [sortBy, setSortBy] = useState('created_at')
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -234,11 +238,12 @@ export default function SiteManagement() {
     // Normalize operator type: do not send 'all' to API
     operator_type: operatorType && operatorType !== 'all' ? operatorType : undefined,
     year,
+    sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
     page,
     limit,
-  }), [debouncedSearch, selectedStatus, siteType, operatorType, year, page])
+  }), [debouncedSearch, selectedStatus, siteType, operatorType, year, sortOrder, sortBy, page, limit])
 
-  const { data, isLoading, error } = useSites(filters)
+  const { data, isLoading, error } = useSites(filters, year !== undefined)
 
   const { data: siteData, isLoading: siteLoading } = useSite(editingSiteId || undefined)
 
@@ -317,6 +322,15 @@ export default function SiteManagement() {
     setDialogMode('add')
     setSelectedSite(null)
     setIsDialogOpen(true)
+  }
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 1 ? -1 : 1)
+    } else {
+      setSortBy(field)
+      setSortOrder(-1)
+    }
   }
 
   const handleEditSite = (siteId: number) => {
@@ -464,7 +478,7 @@ export default function SiteManagement() {
       toast({
         variant: 'success',
         title: 'Site deleted',
-        description: extractMessage(result, `"${siteToDelete.site_name}" has been deleted successfully.`),
+        description: `"${siteToDelete.site_name}" has been deleted successfully.`,
       })
       setIsDeleteDialogOpen(false)
       setSiteToDelete(null)
@@ -969,15 +983,81 @@ export default function SiteManagement() {
                         <TableHead className='w-12'>
                           <Checkbox />
                         </TableHead>
-                        <TableHead>Site Information</TableHead>
-                        <TableHead>Site Type</TableHead>
-                        <TableHead>Operator Type</TableHead>
-                        <TableHead>Community</TableHead>
+                        <TableHead>
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('site')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                            Site Information
+                            {sortBy === 'site' ? (
+                              sortOrder === 1 ?
+                                <ChevronUp className="ml-2 h-4 w-4" /> :
+                                <ChevronDown className="ml-2 h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                            )}
+                          </Button>
+                        </TableHead>
+                        <TableHead>
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('site_type')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                            Site Type
+                            {sortBy === 'site_type' ? (
+                              sortOrder === 1 ?
+                                <ChevronUp className="ml-2 h-4 w-4" /> :
+                                <ChevronDown className="ml-2 h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                            )}
+                          </Button>
+                        </TableHead>
+                        <TableHead>
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('operator_type')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                            Operator Type
+                            {sortBy === 'operator_type' ? (
+                              sortOrder === 1 ?
+                                <ChevronUp className="ml-2 h-4 w-4" /> :
+                                <ChevronDown className="ml-2 h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                            )}
+                          </Button>
+                        </TableHead>
+                        <TableHead>
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('community')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                            Community
+                            {sortBy === 'community' ? (
+                              sortOrder === 1 ?
+                                <ChevronUp className="ml-2 h-4 w-4" /> :
+                                <ChevronDown className="ml-2 h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                            )}
+                          </Button>
+                        </TableHead>
                         <TableHead>Programs</TableHead>
-                        <TableHead>Service Partner</TableHead>
+                        <TableHead>
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('service_partner')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                            Service Partner
+                            {sortBy === 'service_partner' ? (
+                              sortOrder === 1 ?
+                                <ChevronUp className="ml-2 h-4 w-4" /> :
+                                <ChevronDown className="ml-2 h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                            )}
+                          </Button>
+                        </TableHead>
                         <TableHead>Start Date</TableHead>
                         <TableHead>End Date</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('is_active')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                            Status
+                            {sortBy === 'is_active' ? (
+                              sortOrder === 1 ?
+                                <ChevronUp className="ml-2 h-4 w-4" /> :
+                                <ChevronDown className="ml-2 h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                            )}
+                          </Button>
+                        </TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1047,6 +1127,11 @@ export default function SiteManagement() {
                 hasNext={hasNext}
                 hasPrev={hasPrev}
                 label="sites"
+                pageSizeOptions={[10, 20, 50, 100]}
+                onPageSizeChange={(size) => {
+                  setLimit(size)
+                  setPage(1)
+                }}
               />
             </>
           )}

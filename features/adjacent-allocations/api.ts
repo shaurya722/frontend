@@ -15,6 +15,7 @@ export async function fetchAdjacentAllocations(
     params: {
       program: params.program,
       year: params.year,
+      sort: params.sort,
       page: params.page ?? 1,
       limit: params.limit ?? 20,
     },

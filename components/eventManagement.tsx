@@ -37,9 +37,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Calendar, CheckCircle, AlertTriangle, Zap } from "lucide-react";
+import { Calendar, CheckCircle, AlertTriangle, Zap, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { useCensusYears } from "@/features/communities/hooks";
 import { useApproveEvents, useEventListing } from "@/features/events/hooks";
+import { PaginationControls } from "@/components/pagination-controls";
 
 interface Event {
   id: number;
@@ -73,9 +74,7 @@ export default function ToolBEventApplication() {
     ShortfallCommunity[]
   >([]);
   const [selectedProgram, setSelectedProgram] = useState<string>("Paint");
-  const [selectedYear, setSelectedYear] = useState<number>(
-    new Date().getFullYear(),
-  );
+  const [selectedYear, setSelectedYear] = useState<number>(0);
 
   // Dialog state
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
@@ -101,9 +100,18 @@ export default function ToolBEventApplication() {
 
   const { data: censusYearsData } = useCensusYears();
 
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortBy(sortBy.startsWith('-') ? field : `-${field}`)
+    } else {
+      setSortBy(`-${field}`)
+    }
+  }
+
   const { data: eventData, isLoading } = useEventListing({
     year: selectedYear,
     search: debouncedSearch || undefined,
+    sort: sortBy,
     page: currentPage,
     limit: pageSize,
   });
@@ -166,7 +174,7 @@ export default function ToolBEventApplication() {
       const latestYear = Math.max(
         ...censusYearsData.years.map((y: { year: number }) => y.year),
       );
-      setSelectedYear(latestYear);
+      setSelectedYear((prev) => (prev === 0 ? latestYear : prev));
     }
   }, [censusYearsData]);
   // Handle opening event selection dialog
@@ -396,16 +404,43 @@ export default function ToolBEventApplication() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50">
-                        Community
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                          Community
+                          {sortBy === 'name' || sortBy === '-name' ? (
+                            sortBy.startsWith('-') ?
+                              <ChevronDown className="ml-2 h-4 w-4" /> :
+                              <ChevronUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                          )}
+                        </Button>
                       </TableHead>
                       {/* <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
                         Shortfall
                       </TableHead> */}
                       <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
-                        Events Available
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('availabel_event')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                          Events Available
+                          {sortBy === 'availabel_event' || sortBy === '-availabel_event' ? (
+                            sortBy.startsWith('-') ?
+                              <ChevronDown className="ml-2 h-4 w-4" /> :
+                              <ChevronUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                          )}
+                        </Button>
                       </TableHead>
                       <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
-                        Events Applied
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('applied_event')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                          Events Applied
+                          {sortBy === 'applied_event' || sortBy === '-applied_event' ? (
+                            sortBy.startsWith('-') ?
+                              <ChevronDown className="ml-2 h-4 w-4" /> :
+                              <ChevronUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                          )}
+                        </Button>
                       </TableHead>
                       <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-center">
                         Actions
@@ -462,23 +497,22 @@ export default function ToolBEventApplication() {
       </Card>
 
       {/* Pagination */}
-      <div className="flex justify-between items-center mt-4">
-        <Button
-          variant="outline"
-          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-          disabled={currentPage <= 1 || isLoading}
-        >
-          Previous
-        </Button>
-        <span>Page {currentPage}</span>
-        <Button
-          variant="outline"
-          onClick={() => setCurrentPage((prev) => prev + 1)}
-          disabled={isLoading}
-        >
-          Next
-        </Button>
-      </div>
+      <PaginationControls
+        page={currentPage}
+        pageSize={pageSize}
+        totalCount={eventData?.count ?? shortfallCommunities.length}
+        currentCount={shortfallCommunities.length}
+        onPageChange={(newPage) => setCurrentPage(newPage)}
+        isLoading={isLoading}
+        hasNext={!!eventData?.next}
+        hasPrev={!!eventData?.previous}
+        label="communities"
+        pageSizeOptions={[5, 10, 20, 50]}
+        onPageSizeChange={(value) => {
+          setPageSize(value)
+          setCurrentPage(1)
+        }}
+      />
 
       {/* Event Selection Dialog */}
       <Dialog open={isEventDialogOpen} onOpenChange={setIsEventDialogOpen}>

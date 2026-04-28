@@ -71,6 +71,8 @@ interface LeafletMapProps {
   onMapCommunityClick?: (community: MapCommunity) => void
   /** Fired when a server-rendered community polygon is edited on the map */
   onPolygonEdited?: (id: string, geometry: any) => void
+  /** Increment to clear any unsaved client-drawn polygon from the map */
+  unsavedPolygonClearedAt?: number
 }
 
 export default function LeafletMap({
@@ -84,6 +86,7 @@ export default function LeafletMap({
   showMapCommunities = true,
   onMapCommunityClick,
   onPolygonEdited,
+  unsavedPolygonClearedAt,
 }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
@@ -91,6 +94,7 @@ export default function LeafletMap({
   const communityLayersRef = useRef<any[]>([])
   const drawnItemsRef = useRef<any>(null)
   const drawControlRef = useRef<any>(null)
+  const clientDrawnLayersRef = useRef<any[]>([])
   const [leafletReady, setLeafletReady] = useState(false)
 
   useEffect(() => {
@@ -205,6 +209,7 @@ export default function LeafletMap({
           })
           restored.eachLayer((layer: any) => {
             drawnItems.addLayer(layer)
+            clientDrawnLayersRef.current.push(layer)
           })
           // Fit bounds to restored polygon
           try {
@@ -346,6 +351,7 @@ export default function LeafletMap({
 
         // Passed overlap checks — add the drawn polygon to the map
         drawnItems.addLayer(layer)
+        clientDrawnLayersRef.current.push(layer)
 
         // Call the callback with the GeoJSON geometry
         if (onPolygonCreate) {
@@ -367,6 +373,7 @@ export default function LeafletMap({
         layers.eachLayer(function (layer: any) {
           console.log('Polygon deleted:', layer.toGeoJSON())
         })
+        clientDrawnLayersRef.current = []
         // Clear saved polygon
         try {
           if (typeof window !== 'undefined') {
@@ -641,6 +648,29 @@ export default function LeafletMap({
 
     updateMarkers()
   }, [leafletReady, sites, municipalities, filters, layers, onSiteClick])
+
+  // Clear unsaved client-drawn polygon when parent signals cancellation
+  useEffect(() => {
+    if (!unsavedPolygonClearedAt || !leafletReady) return
+    try {
+      const drawnItems = drawnItemsRef.current
+      if (drawnItems) {
+        clientDrawnLayersRef.current.forEach((layer) => {
+          try {
+            drawnItems.removeLayer?.(layer)
+          } catch {
+            /* ignore */
+          }
+        })
+      }
+      clientDrawnLayersRef.current = []
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('drawnPolygon')
+      }
+    } catch (e) {
+      console.warn('Failed to clear unsaved polygon', e)
+    }
+  }, [unsavedPolygonClearedAt, leafletReady])
 
   return (
     <div

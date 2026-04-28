@@ -25,7 +25,7 @@ export const useEventListing = (year: number, search?: string, page?: number, li
   return useQuery<{ results: ApiResponse[] }>({
     queryKey: ['eventListing', year, search, page, limit],
     queryFn: async () => {
-      const response = await fetch(`http://127.0.0.1:8000/api/sites/event-listing/?${params.toString()}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sites/event-listing/?${params.toString()}`)
       if (!response.ok) {
         throw new Error('Failed to fetch event listing')
       }

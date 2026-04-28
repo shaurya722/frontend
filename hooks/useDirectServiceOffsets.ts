@@ -63,14 +63,15 @@ export function useDirectServiceOffsetPreview(
   program: string | null,
   page?: number,
   limit?: number,
+  sort?: string,
 ) {
   return useQuery({
-    queryKey: [...DIRECT_SERVICE_OFFSET_PREVIEW_QUERY_KEY, censusYearId, program, page, limit],
+    queryKey: [...DIRECT_SERVICE_OFFSET_PREVIEW_QUERY_KEY, censusYearId, program, page, limit, sort],
     queryFn: () => {
       if (!censusYearId || !program) {
         throw new Error('censusYearId and program are required')
       }
-      return fetchDirectServiceOffsetPreview(censusYearId, program, page, limit)
+      return fetchDirectServiceOffsetPreview(censusYearId, program, page, limit, sort)
     },
     enabled: !!censusYearId && !!program,
   })

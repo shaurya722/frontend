@@ -8,6 +8,7 @@ export const fetchEventListing = async (
 
   params.append('year', filters.year.toString())
   if (filters.search) params.append('search', filters.search)
+  if (filters.sort) params.append('sort', filters.sort)
   if (filters.page !== undefined) params.append('page', filters.page.toString())
   if (filters.limit !== undefined) params.append('limit', filters.limit.toString())
 

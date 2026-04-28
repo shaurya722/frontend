@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Zap, Calculator, MapPin, Info, Loader2, Edit, AlertCircle, FileText, RefreshCw } from "lucide-react"
+import { Zap, Calculator, MapPin, Info, Loader2, Edit, AlertCircle, FileText, RefreshCw, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useCensusYears } from "@/hooks/useCensusYears"
 import {
@@ -39,10 +39,10 @@ export default function DirectServiceOffset() {
   const createCommunityMutation = useCreateCommunityOffset()
   const updateCommunityMutation = useUpdateCommunityOffset()
 
-  // Global percentage reduction state - default to year 2050 and Paint
+  // Global percentage reduction state - defaults set from latest census year via useEffect
   const [globalReduction, setGlobalReduction] = useState({
     program: 'Paint' as string,
-    year: 2050 as number,
+    year: 0 as number,
     percentage: 0,
   })
   const [isApplyingGlobal, setIsApplyingGlobal] = useState(false)
@@ -55,6 +55,14 @@ export default function DirectServiceOffset() {
     const fromApi = censusYearsData?.years?.map((y) => y) ?? []
     return fromApi
   }, [censusYearsData])
+
+  // Set latest census year as default when data loads
+  useEffect(() => {
+    if (censusYearOptions.length > 0) {
+      const latestYear = Math.max(...censusYearOptions.map((y) => y.year))
+      setGlobalReduction((prev) => ({ ...prev, year: latestYear }))
+    }
+  }, [censusYearOptions])
 
   // Note: handleUpdateOffset and related editing functions are commented out
   // along with the Active Offsets card. Restore when needed.
@@ -112,16 +120,32 @@ export default function DirectServiceOffset() {
   // Fetch preview data
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+
+  // Sort state
+  const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
+  const [sortBy, setSortBy] = useState('community_name')
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 1 ? -1 : 1)
+    } else {
+      setSortBy(field)
+      setSortOrder(-1)
+    }
+  }
+
   const {
     data: previewData,
     isLoading: isPreviewLoading,
     isError: isPreviewError,
     refetch: refetchPreview,
-  } = useDirectServiceOffsetPreview(selectedCensusYearId, globalReduction.program, page, pageSize)
+  } = useDirectServiceOffsetPreview(selectedCensusYearId, globalReduction.program, page, pageSize, sortOrder === -1 ? `-${sortBy}` : sortBy)
 
-  // Reset pagination when filters change
+  // Reset pagination and sort when filters change
   useEffect(() => {
     setPage(1)
+    setSortBy('community_name')
+    setSortOrder(-1)
   }, [selectedCensusYearId, globalReduction.program])
 
   const handleApplyGlobalReduction = async () => {
@@ -378,10 +402,43 @@ export default function DirectServiceOffset() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
-                    <TableHead className="font-medium text-gray-700">Community</TableHead>
-                    <TableHead className="font-medium text-gray-700 text-center">Required</TableHead>
+                    <TableHead className="font-medium text-gray-700">
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('community_name')} className="h-auto p-0 font-semibold" disabled={isPreviewLoading}>
+                        Community
+                        {sortBy === 'community_name' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="font-medium text-gray-700 text-center">
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('base_required_sites')} className="h-auto p-0 font-semibold" disabled={isPreviewLoading}>
+                        Required
+                        {sortBy === 'base_required_sites' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
                     <TableHead className="font-medium text-gray-700 text-center">% Reduction</TableHead>
-                    <TableHead className="font-medium text-gray-700 text-center">New Required</TableHead>
+                    <TableHead className="font-medium text-gray-700 text-center">
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('new_required_sites')} className="h-auto p-0 font-semibold" disabled={isPreviewLoading}>
+                        New Required
+                        {sortBy === 'new_required_sites' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
                     <TableHead className="font-medium text-gray-700 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>

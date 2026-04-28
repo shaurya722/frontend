@@ -18,6 +18,7 @@ export interface AdjacentListParams {
   program: string
   /** Census / performance year, e.g. 2050 — sent as `year` query param */
   year: number
+  sort?: string
   page?: number
   limit?: number
 }

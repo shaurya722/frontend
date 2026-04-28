@@ -15,7 +15,7 @@ export const fetchSites = async (filters: SitesFilters = {}): Promise<PaginatedS
   if (filters.page !== undefined) queryParams.append("page", filters.page.toString());
   if (filters.limit !== undefined) queryParams.append("limit", filters.limit.toString());
 
-  const response = await axiosInstance.get(`/api/sites?${queryParams.toString()}`);
+  const response = await axiosInstance.get(`/api/sites/?${queryParams.toString()}`);
   return response.data;
 };
 

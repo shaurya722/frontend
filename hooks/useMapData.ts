@@ -56,7 +56,7 @@ export const useMapData = (filters: MapFilters) => {
   return useQuery<MapDataResponse>({
     queryKey: ['mapData', filters],
     queryFn: async () => {
-      const apiUrl = new URL('http://192.168.3.154:8000/api/community/map-data/')
+      const apiUrl = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/community/map-data/`)
       if (filters.performancePeriod !== 'all') {
         apiUrl.searchParams.set('census_year', filters.performancePeriod)
       }

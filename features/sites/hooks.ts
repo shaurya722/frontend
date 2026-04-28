@@ -10,10 +10,11 @@ import {
 } from "./api";
 import { SitesFilters } from "./types";
 
-export const useSites = (filters: SitesFilters = {}) => {
+export const useSites = (filters: SitesFilters = {}, enabled = true) => {
   return useQuery({
     queryKey: ["sites", filters],
     queryFn: () => fetchSites(filters),
+    enabled,
   });
 };
 

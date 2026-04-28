@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { useToast } from '@/hooks/use-toast'
 
 export const SITE_PROGRAMS = ['Paint', 'Lights', 'Solvents', 'Pesticides', 'Fertilizers'] as const
@@ -498,28 +499,18 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
 
               <div className='space-y-2'>
                 <Label htmlFor='municipality'>Community *</Label>
-                <Select
+                <SearchableSelect
                   value={newSite.municipality_id}
                   onValueChange={(value) => {
                     clearError('municipality_id')
                     setNewSite({ ...newSite, municipality_id: value })
                   }}
                   disabled={!newSite.census_year || communitiesLoading}
-                >
-                  <SelectTrigger className={getFieldClasses('municipality_id')}>
-                    <SelectValue placeholder={newSite.census_year ? (communitiesLoading ? 'Loading communities...' : 'Select community') : 'Select census year first'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {communities?.communities?.map((community: any) => (
-                      <SelectItem
-                        key={community.id}
-                        value={community.id}
-                      >
-                        {community.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder={newSite.census_year ? (communitiesLoading ? 'Loading communities...' : 'Select community') : 'Select census year first'}
+                  searchPlaceholder='Search community...'
+                  triggerClassName={getFieldClasses('municipality_id')}
+                  options={communities?.communities?.map((community: any) => ({ value: community.id, label: community.name })) ?? []}
+                />
                 {renderErrorMessage('municipality_id')}
               </div>
 
@@ -644,27 +635,17 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
 
             <div className='space-y-2'>
               <Label htmlFor='community'>Community (Census Subdivision) *</Label>
-              <Select
+              <SearchableSelect
                 value={newSite.community}
                 onValueChange={(value) => {
                   clearError('community')
                   setNewSite({ ...newSite, community: value })
                 }}
-              >
-                <SelectTrigger className={getFieldClasses('community')}>
-                  <SelectValue placeholder='Select community from census data' />
-                </SelectTrigger>
-                <SelectContent>
-                  {safeMunicipalities.map((municipality) => (
-                    <SelectItem
-                      key={municipality.id}
-                      value={municipality.name}
-                    >
-                      {municipality.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder='Select community from census data'
+                searchPlaceholder='Search community...'
+                triggerClassName={getFieldClasses('community')}
+                options={safeMunicipalities.map((municipality) => ({ value: municipality.name, label: municipality.name }))}
+              />
               {renderErrorMessage('community')}
             </div>
 

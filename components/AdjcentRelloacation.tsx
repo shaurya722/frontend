@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
@@ -38,7 +39,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Info, ArrowRight, Loader2, ChevronLeft, ChevronRight, Eye, Building2, TrendingDown, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Info, ArrowRight, Loader2, ChevronLeft, ChevronRight, Eye, Building2, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { PaginationControls } from '@/components/pagination-controls'
 import {
@@ -65,15 +66,18 @@ export default function AdjacentReallocation() {
 
   const [search, setSearch] = useState('')
   const [program, setProgram] = useState<string>('Paint')
-  const [censusYear, setCensusYear] = useState('2050')
+  const [censusYear, setCensusYear] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+
+  // Sort state
+  const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
+  const [sortBy, setSortBy] = useState('name')
 
   const censusYearOptions = useMemo(() => {
     const fromApi =
       censusYearsData?.years?.map((y) => y.year).sort((a, b) => b - a) ?? []
-    if (fromApi.length > 0) return fromApi
-    return [2050, 2035, 2024, 2023, 2022, 2021]
+    return fromApi
   }, [censusYearsData])
 
   useEffect(() => {
@@ -83,14 +87,24 @@ export default function AdjacentReallocation() {
     setCensusYear(String(censusYearOptions[0]))
   }, [censusYearOptions, censusYear])
 
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 1 ? -1 : 1)
+    } else {
+      setSortBy(field)
+      setSortOrder(-1)
+    }
+  }
+
   const listParams = useMemo(
     () => ({
       program,
-      year: parseInt(censusYear, 10) || 2050,
+      year: parseInt(censusYear, 10),
+      sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
       page,
       limit: pageSize,
     }),
-    [program, censusYear, page, pageSize],
+    [program, censusYear, sortOrder, sortBy, page, pageSize],
   )
 
   const {
@@ -99,7 +113,7 @@ export default function AdjacentReallocation() {
     isError,
     error,
     refetch,
-  } = useAdjacentAllocations(listParams, censusYearsLoaded)
+  } = useAdjacentAllocations(listParams, censusYearsLoaded && Number.isFinite(listParams.year) && listParams.year > 0)
 
   const allocateMutation = useAllocateAdjacent()
 
@@ -377,9 +391,29 @@ export default function AdjacentReallocation() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[140px]">Community</TableHead>
+                <TableHead className="min-w-[140px]">
+                  <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                    Community
+                    {sortBy === 'name' ? (
+                      sortOrder === 1 ?
+                        <ChevronUp className="ml-2 h-4 w-4" /> :
+                        <ChevronDown className="ml-2 h-4 w-4" />
+                    ) : (
+                      <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                    )}
+                  </Button>
+                </TableHead>
                 <TableHead className="min-w-[80px] text-center">
-                  Eligible Excess
+                  <Button variant="ghost" size="sm" onClick={() => handleSort('eligible_excess')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                    Eligible Excess
+                    {sortBy === 'eligible_excess' ? (
+                      sortOrder === 1 ?
+                        <ChevronUp className="ml-2 h-4 w-4" /> :
+                        <ChevronDown className="ml-2 h-4 w-4" />
+                    ) : (
+                      <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                    )}
+                  </Button>
                 </TableHead>
                 <TableHead className="min-w-[280px]">
                   Adjacent with Shortfalls
@@ -539,21 +573,13 @@ export default function AdjacentReallocation() {
 
           <div className="space-y-2">
             <Label>Target community</Label>
-            <Select
+            <SearchableSelect
               value={targetCommunityId}
               onValueChange={setTargetCommunityId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select adjacent with shortfall" />
-              </SelectTrigger>
-              <SelectContent>
-                {selectedCommunity?.adjacentWithShortfalls.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name} (shortfall {a.shortfall})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Select adjacent with shortfall"
+              searchPlaceholder="Search community..."
+              options={selectedCommunity?.adjacentWithShortfalls.map((a) => ({ value: a.id, label: `${a.name} (shortfall ${a.shortfall})` })) ?? []}
+            />
           </div>
 
           <div className="space-y-2">

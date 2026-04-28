@@ -221,7 +221,7 @@ export default function RegulatoryRulesManagement({
     resolver: yupResolver(createSchema),
     defaultValues: {
       regulatory_rule: '',
-      census_year: 2024,
+      census_year: 0,
       description: '',
       program: 'Paint',
       category: 'HSP',
@@ -243,7 +243,7 @@ export default function RegulatoryRulesManagement({
     defaultValues: {
       regulatory_rule: '',
       name: '',
-      census_year: 2024,
+      census_year: 0,
       description: '',
       program: 'Paint',
       category: 'HSP',
@@ -274,8 +274,9 @@ export default function RegulatoryRulesManagement({
     if (censusYearsData?.years && censusYearsData.years.length > 0) {
       const latestYear = Math.max(...censusYearsData.years.map(y => y.year))
       setSelectedCensusYear(latestYear.toString())
+      createForm.setValue('census_year', latestYear)
     }
-  }, [censusYearsData])
+  }, [censusYearsData, createForm])
 
   useEffect(() => {
     if (successMessage) {

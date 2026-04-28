@@ -44,6 +44,7 @@ export async function fetchDirectServiceOffsetPreview(
   program: string,
   page?: number,
   limit?: number,
+  sort?: string,
 ): Promise<DirectServiceOffsetPreview> {
   const { data } = await axiosInstance.get(`${DIRECT_SERVICE_BASE}preview/`, {
     params: {
@@ -51,6 +52,7 @@ export async function fetchDirectServiceOffsetPreview(
       program: program,
       page,
       limit,
+      sort,
     },
   })
   return data
