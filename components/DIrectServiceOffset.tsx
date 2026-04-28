@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +20,7 @@ import {
   useCreateCommunityOffset,
   useUpdateCommunityOffset,
 } from "@/hooks/useDirectServiceOffsets"
+import { PaginationControls } from "@/components/pagination-controls"
 
 const PROGRAMS = [
   'Paint',
@@ -109,12 +110,19 @@ export default function DirectServiceOffset() {
   }, [censusYearOptions, globalReduction.year])
 
   // Fetch preview data
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const {
     data: previewData,
     isLoading: isPreviewLoading,
     isError: isPreviewError,
     refetch: refetchPreview,
-  } = useDirectServiceOffsetPreview(selectedCensusYearId, globalReduction.program)
+  } = useDirectServiceOffsetPreview(selectedCensusYearId, globalReduction.program, page, pageSize)
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [selectedCensusYearId, globalReduction.program])
 
   const handleApplyGlobalReduction = async () => {
     if (globalReduction.percentage <= 0 || globalReduction.percentage > 100) {
@@ -464,6 +472,30 @@ export default function DirectServiceOffset() {
                 </TableBody>
               </Table>
             </div>
+          )}
+          {/* Pagination controls */}
+          {previewData && previewData.total_communities > 0 && (
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              totalCount={previewData.total_communities}
+              currentCount={previewData.communities.length}
+              onPageChange={(newPage) => setPage(newPage)}
+              isLoading={isPreviewLoading}
+              hasNext={
+                typeof previewData.total_pages === 'number'
+                  ? page < (previewData.total_pages || 1)
+                  : page < Math.max(1, Math.ceil(previewData.total_communities / Math.max(1, pageSize)))
+              }
+              hasPrev={page > 1}
+              label="communities"
+              pageSizeOptions={[10, 20, 50, 100]}
+              onPageSizeChange={(value) => {
+                setPageSize(value)
+                setPage(1)
+              }}
+              className="mt-4"
+            />
           )}
         </CardContent>
       </Card>

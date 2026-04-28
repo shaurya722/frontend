@@ -42,11 +42,15 @@ export async function createCommunityOffset(
 export async function fetchDirectServiceOffsetPreview(
   censusYearId: number,
   program: string,
+  page?: number,
+  limit?: number,
 ): Promise<DirectServiceOffsetPreview> {
   const { data } = await axiosInstance.get(`${DIRECT_SERVICE_BASE}preview/`, {
     params: {
       census_year_id: censusYearId,
       program: program,
+      page,
+      limit,
     },
   })
   return data

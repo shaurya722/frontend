@@ -58,14 +58,19 @@ export function useCreateCommunityOffset() {
 
 export const DIRECT_SERVICE_OFFSET_PREVIEW_QUERY_KEY = ['direct-service-offset-preview'] as const
 
-export function useDirectServiceOffsetPreview(censusYearId: number | null, program: string | null) {
+export function useDirectServiceOffsetPreview(
+  censusYearId: number | null,
+  program: string | null,
+  page?: number,
+  limit?: number,
+) {
   return useQuery({
-    queryKey: [...DIRECT_SERVICE_OFFSET_PREVIEW_QUERY_KEY, censusYearId, program],
+    queryKey: [...DIRECT_SERVICE_OFFSET_PREVIEW_QUERY_KEY, censusYearId, program, page, limit],
     queryFn: () => {
       if (!censusYearId || !program) {
         throw new Error('censusYearId and program are required')
       }
-      return fetchDirectServiceOffsetPreview(censusYearId, program)
+      return fetchDirectServiceOffsetPreview(censusYearId, program, page, limit)
     },
     enabled: !!censusYearId && !!program,
   })

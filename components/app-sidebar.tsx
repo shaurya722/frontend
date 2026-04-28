@@ -190,23 +190,23 @@ export function AppSidebar() {
         },
       ],
     },
-    {
-      title: "Data & Reports",
-      items: [
-        {
-          title: "Reports & Export",
-          icon: FileText,
-          href: "/dashboard/reports",
-          visible: true,
-        },
-        {
-          title: "Data Management",
-          icon: Database,
-          href: "/dashboard/data",
-          visible: isAnalyst,
-        },
-      ],
-    },
+    // {
+    //   title: "Data & Reports",
+    //   items: [
+    //     {
+    //       title: "Reports & Export",
+    //       icon: FileText,
+    //       href: "/dashboard/reports",
+    //       visible: true,
+    //     },
+    //     {
+    //       title: "Data Management",
+    //       icon: Database,
+    //       href: "/dashboard/data",
+    //       visible: isAnalyst,
+    //     },
+    //   ],
+    // },
     {
       title: "Administration",
       items: [
@@ -222,12 +222,12 @@ export function AppSidebar() {
           href: "/dashboard/census-years",
           visible: isAdmin,
         },
-        {
-          title: "User Management",
-          icon: Users,
-          href: "/dashboard/users",
-          visible: isAdmin,
-        },
+        // {
+        //   title: "User Management",
+        //   icon: Users,
+        //   href: "/dashboard/users",
+        //   visible: isAdmin,
+        // },
       ],
     },
   ]
@@ -319,7 +319,7 @@ export function AppSidebar() {
                     </div>
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
+                {/* <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push("/profile")}>
                   <User className="mr-2 h-4 w-4" />
                   Profile
@@ -327,7 +327,7 @@ export function AppSidebar() {
                 <DropdownMenuItem onClick={() => router.push("/change-password")}>
                   <Settings className="mr-2 h-4 w-4" />
                   Change Password
-                </DropdownMenuItem>
+                </DropdownMenuItem> */}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogoutClick} className="text-red-600 focus:text-red-600">
                   <LogOut className="mr-2 h-4 w-4" />

@@ -65,4 +65,7 @@ export interface DirectServiceOffsetPreview {
   program: string
   communities: PreviewCommunity[]
   total_communities: number
+  page?: number
+  limit?: number
+  total_pages?: number
 }
