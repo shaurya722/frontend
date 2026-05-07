@@ -59,20 +59,22 @@ function formatPct(n: number, digits = 1) {
 }
 
 function TopCommunitiesYAxisTick({
-  x = 0,
-  y = 0,
+  x,
+  y,
   payload,
   sitesByName,
 }: {
-  x?: number
-  y?: number
+  x?: string | number
+  y?: string | number
   payload?: { value?: unknown }
   sitesByName: Map<string, number>
 }) {
+  const xNum = typeof x === 'number' ? x : Number(x ?? 0) || 0
+  const yNum = typeof y === 'number' ? y : Number(y ?? 0) || 0
   const name = typeof payload?.value === 'string' ? payload.value : String(payload?.value ?? '')
   const sites = sitesByName.get(name) ?? 0
   return (
-    <g transform={`translate(${x},${y})`}>
+    <g transform={`translate(${xNum},${yNum})`}>
       <text x={0} y={0} dy={-5} textAnchor='end' className='fill-foreground' style={{ fontSize: 11, fontWeight: 600 }}>
         {name}
       </text>
