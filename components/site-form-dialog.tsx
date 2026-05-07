@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { useCensusYears, useCommunityDropdown } from '@/features/communities/hooks'
+import React, { useState, useEffect, useMemo } from 'react'
+import { useCensusYears, useInfiniteCommunityDropdown } from '@/features/communities/hooks'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -182,9 +182,33 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const { data: censusYears } = useCensusYears()
-  const { data: communities, isLoading: communitiesLoading } = useCommunityDropdown(
-    censusYears?.years?.find(cy => cy.id === newSite.census_year)?.year
+  const censusYearValue = censusYears?.years?.find((cy) => cy.id === newSite.census_year)?.year
+  const [communitySearch, setCommunitySearch] = useState('')
+  const {
+    data: communitiesInfinite,
+    isLoading: communitiesLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteCommunityDropdown(
+    censusYearValue,
+    communitySearch,
+    50,
+    !!censusYearValue,
   )
+  const communityOptions = useMemo(() => {
+    const rows = communitiesInfinite?.pages.flatMap((p) => p.communities) ?? []
+    return rows.map((c: { id?: string; name: string }) => ({
+      value: String(c.id ?? c.name),
+      label: c.name,
+      itemKey: `${c.id ?? ''}:${c.name}`,
+    }))
+  }, [communitiesInfinite])
+
+  useEffect(() => {
+    setCommunitySearch('')
+  }, [newSite.census_year])
+
   const { toast } = useToast()
 
   const hasError = (key: string) => Boolean(errors[key])
@@ -509,7 +533,11 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                   placeholder={newSite.census_year ? (communitiesLoading ? 'Loading communities...' : 'Select community') : 'Select census year first'}
                   searchPlaceholder='Search community...'
                   triggerClassName={getFieldClasses('municipality_id')}
-                  options={communities?.communities?.map((community: any) => ({ value: community.id, label: community.name })) ?? []}
+                  onSearchChange={setCommunitySearch}
+                  hasNextPage={hasNextPage}
+                  isFetchingNextPage={isFetchingNextPage}
+                  onFetchNextPage={() => fetchNextPage()}
+                  options={communityOptions}
                 />
                 {renderErrorMessage('municipality_id')}
               </div>
@@ -785,7 +813,7 @@ const SiteFormDialog: React.FC<SiteFormDialogProps> = ({
                   const schedule = newSite.programSchedules[program]
                   const startKey = getProgramStartDateKey(program)
                   return (
-                    <div key={program} className='rounded-lg border border-gray-200 p-3 space-y-3'>
+                    <div key={program} className='rounded-lg border border-border p-3 space-y-3'>
                       <div className='flex items-center space-x-2'>
                         <Checkbox
                           id={`program-${program}`}

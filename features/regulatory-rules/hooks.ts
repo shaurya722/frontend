@@ -7,6 +7,7 @@ import {
   createRegulatoryRule,
   updateRegulatoryRule,
   deleteRegulatoryRule,
+  exportRegulatoryRules,
 } from './api'
 import type {
   RegulatoryRule,
@@ -21,11 +22,12 @@ export const REGULATORY_RULES_QUERY_KEY = 'regulatory-rules'
 /**
  * Hook to fetch all regulatory rules with filters and pagination
  */
-export function useRegulatoryRules(params: RegulatoryRulesQueryParams = {}) {
+export function useRegulatoryRules(params: RegulatoryRulesQueryParams = {}, enabled = true) {
   return useQuery<RegulatoryRulesResponse>({
     queryKey: [REGULATORY_RULES_QUERY_KEY, params],
     queryFn: () => fetchRegulatoryRules(params),
-    staleTime: 0, // Disable caching for debugging
+    staleTime: 0,
+    enabled,
   })
 }
 
@@ -85,5 +87,14 @@ export function useDeleteRegulatoryRule() {
       // Invalidate regulatory rules list
       queryClient.invalidateQueries({ queryKey: [REGULATORY_RULES_QUERY_KEY] })
     },
+  })
+}
+
+/**
+ * Hook to export regulatory rules to CSV
+ */
+export function useExportRegulatoryRules() {
+  return useMutation({
+    mutationFn: (params: RegulatoryRulesQueryParams = {}) => exportRegulatoryRules(params),
   })
 }

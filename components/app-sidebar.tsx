@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import axiosInstance from "@/lib/axios-instance"
+import { useLogout } from "@/features/auth"
 import { useRouter, usePathname } from "next/navigation"
 import {
   LayoutDashboard,
@@ -51,47 +53,74 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { number } from "yup"
 
 interface UserData {
   id: number
   email: string
   first_name: string
+  username: string
   last_name: string
 }
 
 export function AppSidebar() {
   const router = useRouter()
   const pathname = usePathname()
-  const [user, setUser] = useState<UserData | null>({
-    id: 1,
-    email: "test@example.com",
-    first_name: "John",
-    last_name: "Doe",
-  })
+  const [user, setUser] = useState<UserData | null>()
   const [showLogoutDialog, setShowLogoutDialog] = useState(false)
+  const logoutMutation = useLogout()
+
+  const fetchProfile = async () => {
+    try {
+      const res = await axiosInstance.get<UserData>("/api/auth/profile/")
+      const data = res.data
+      setUser(data)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(data))
+      }
+    } catch (e) {
+      // Silently ignore; UI will continue to show last known data
+    }
+  }
 
   useEffect(() => {
     const userData = localStorage.getItem("user")
     if (userData) {
       setUser(JSON.parse(userData))
     }
+    // Always refresh from API so latest profile is shown
+    fetchProfile()
+    const onFocus = () => fetchProfile()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
   }, [])
 
   const isAdmin = true // TODO: Implement role-based access when roles are available from API
   const isAnalyst = true // TODO: Implement role-based access when roles are available from API
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Call logout API to invalidate refresh token on the server
+    if (typeof window !== 'undefined') {
+      const refreshToken = localStorage.getItem('refresh_token')
+      if (refreshToken) {
+        try {
+          await logoutMutation.mutateAsync({ refresh: refreshToken })
+        } catch (e) {
+          // Ignore errors; proceed with local cleanup regardless
+          console.warn('Logout API call failed:', e)
+        }
+      }
+    }
+
     // Clear all user-related data from localStorage
     localStorage.removeItem("user")
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")
     localStorage.removeItem("authToken")
     localStorage.removeItem("session")
-    
+
     // Clear any other session-related data
     sessionStorage.clear()
-    
+
     // Redirect to login page
     router.push("/login")
     router.refresh() // Force a refresh to clear any cached state
@@ -121,7 +150,7 @@ export function AppSidebar() {
       case "Viewer":
         return "bg-green-100 text-green-800 border-green-200"
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-muted text-muted-foreground border-border"
     }
   }
 
@@ -148,12 +177,12 @@ export function AppSidebar() {
           href: "/dashboard/compliance",
           visible: true,
         },
-        {
-          title: "Compliance Reports",
-          icon: FileText,
-          href: "/dashboard/compliance-reports",
-          visible: true,
-        },
+        // {
+        //   title: "Compliance Reports",
+        //   icon: FileText,
+        //   href: "/dashboard/compliance-reports",
+        //   visible: true,
+        // },
       ],
     },
     {
@@ -171,6 +200,12 @@ export function AppSidebar() {
           href: "/dashboard/communities",
           visible: isAdmin,
         },
+        {
+          title: "Adjacent Community",
+          icon: Building2,
+          href: "/dashboard/adjacent-community-management",
+          visible: isAdmin,
+        }
       ],
     },
     {
@@ -196,23 +231,25 @@ export function AppSidebar() {
         },
       ],
     },
-    // {
-    //   title: "Data & Reports",
-    //   items: [
-    //     {
-    //       title: "Reports & Export",
-    //       icon: FileText,
-    //       href: "/dashboard/reports",
-    //       visible: true,
-    //     },
-    //     {
-    //       title: "Data Management",
-    //       icon: Database,
-    //       href: "/dashboard/data",
-    //       visible: isAnalyst,
-    //     },
-    //   ],
-    // },
+    {
+      title: "Data & Reports",
+      items: [
+        {
+          title: "Reports & Export",
+          icon: FileText,
+          // href: "/dashboard/reports",
+          href: "/dashboard/compliance-reports",
+
+          visible: true,
+        },
+        // {
+        //   title: "Data Management",
+        //   icon: Database,
+        //   href: "/dashboard/data",
+        //   visible: isAnalyst,
+        // },
+      ],
+    },
     {
       title: "Administration",
       items: [
@@ -246,12 +283,12 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex items-center gap-2 px-2 py-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-blue-600 text-white font-bold">
+              <div className="flex size-8 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent font-semibold text-xs text-sidebar-accent-foreground">
                 AG
               </div>
               <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
-                <span className="font-semibold">ArcGIS Compliance</span>
-                <span className="text-xs text-muted-foreground">Ontario HSP & EEE</span>
+                <span className="font-semibold text-sidebar-foreground">Arc Ontario Compliance</span>
+                <span className="text-xs text-sidebar-foreground/55">Ontario HSP & EEE</span>
               </div>
             </div>
           </SidebarMenuItem>
@@ -265,12 +302,25 @@ export function AppSidebar() {
 
           return (
             <SidebarGroup key={index}>
-              <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+              <SidebarGroupLabel className='text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45'>
+                {group.title}
+              </SidebarGroupLabel>
+              {/* <SidebarGroupLabel>{group.title}</SidebarGroupLabel> */}
               <SidebarGroupContent>
                 <SidebarMenu>
                   {visibleItems.map((item) => (
                     <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname === item.href}
+                        tooltip={item.title}
+                        className={
+                          pathname === item.href
+                            ? '!border-l-[3px] !border-sidebar-primary !bg-sidebar-accent !text-sidebar-accent-foreground !font-medium hover:!bg-sidebar-accent'
+                            : 'border-l-[3px] border-transparent text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground'
+                        }
+                      >
+                        {/* <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.title}></SidebarMenuButton> */}
                         <a href={item.href}>
                           <item.icon />
                           <span>{item.title}</span>
@@ -288,15 +338,16 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(open) => { if (open) fetchProfile() }}>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton
                   size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground cursor-pointer"
+                  onClick={() => router.push("/dashboard/profile")}
                 >
                   <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg bg-blue-600 text-white">
-                      {getInitials(`${user.first_name} ${user.last_name}`)}
+                    <AvatarFallback className="rounded-lg border border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground">
+                      {getInitials(`${user.first_name}`)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
@@ -315,8 +366,8 @@ export function AppSidebar() {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="h-8 w-8 rounded-lg">
-                      <AvatarFallback className="rounded-lg bg-blue-600 text-white">
-                        {getInitials(`${user.first_name} ${user.last_name}`)}
+                      <AvatarFallback className="rounded-lg border border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground">
+                        {getInitials(`${user.first_name}`)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
@@ -325,15 +376,11 @@ export function AppSidebar() {
                     </div>
                   </div>
                 </DropdownMenuLabel>
-                {/* <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push("/profile")}>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push("/dashboard/profile")}>
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/change-password")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Change Password
-                </DropdownMenuItem> */}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogoutClick} className="text-red-600 focus:text-red-600">
                   <LogOut className="mr-2 h-4 w-4" />

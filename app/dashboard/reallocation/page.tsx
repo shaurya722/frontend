@@ -5,8 +5,8 @@ import AdjcentRelloacation from "@/components/AdjcentRelloacation"
 export default function AdjcentRelloacationPage() {
     return (
         <DashboardLayout 
-            title="Adjcent Relloacation" 
-            description="Manage adjcent reloacation and adjcent reloacation data"
+            title="Adjacent Relloacation" 
+            description="Manage adjacent reloacation and adjacent reloacation data"
             breadcrumb={["Dashboard", "Adjcent Relloacation"]}
         >
             <Suspense fallback={<div>Loading adjcent reloacation...</div>}>

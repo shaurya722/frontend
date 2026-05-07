@@ -23,6 +23,7 @@ export function adjacentAllocationsQueryKey(params: AdjacentListParams) {
     params.program,
     params.year,
     params.sort,
+    params.search,
     params.page ?? 1,
     params.limit ?? 20,
   ] as const

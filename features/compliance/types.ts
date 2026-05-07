@@ -47,6 +47,11 @@ export interface ComplianceFilters {
   year?: string;
   status?: 'compliant' | 'shortfall' | 'excess';
   search?: string;
+  /**
+   * Backend supports `sort`, `sortBy`, `sort_by`, `sortby`, and `ordering`.
+   * Use signed string (e.g. `-shortfall`) for desc.
+   */
+  sort?: string;
   ordering?: string;
   page?: number;
   limit?: number;

@@ -41,6 +41,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Info, ArrowRight, Loader2, ChevronLeft, ChevronRight, Eye, Building2, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { getApiErrorDescription } from '@/lib/api-response-messages'
 import { PaginationControls } from '@/components/pagination-controls'
 import {
   useAdjacentAllocations,
@@ -101,10 +102,11 @@ export default function AdjacentReallocation() {
       program,
       year: parseInt(censusYear, 10),
       sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
+      search: search.trim() || undefined,
       page,
       limit: pageSize,
     }),
-    [program, censusYear, sortOrder, sortBy, page, pageSize],
+    [program, censusYear, sortOrder, sortBy, search, page, pageSize],
   )
 
   const {
@@ -215,43 +217,10 @@ export default function AdjacentReallocation() {
       })
       setAllocateOpen(false)
       setSelectedCommunity(null)
-    } catch (e: any) {
-      // Debug: log the full error object
-      console.log('Full error object:', e)
-      console.log('Error message:', e?.message)
-      console.log('Error errors:', e?.errors)
-      console.log('Error data:', e?.data)
-      
-      // Axios interceptor returns: { message, status, errors, data }
-      // Default to the message from interceptor (should be pre-extracted)
-      let message = e?.message || 'Allocation failed'
-      
-      // If we have the raw errors array, extract messages directly
-      const rawErrors = e?.errors || e?.data?.errors
-      if (Array.isArray(rawErrors) && rawErrors.length > 0) {
-        const errorMessages = rawErrors.map((err: any) => {
-          // Handle the error field which is JSON stringified: "[\"message\"]"
-          if (typeof err.error === 'string') {
-            try {
-              // Try to parse as JSON array
-              const parsed = JSON.parse(err.error)
-              if (Array.isArray(parsed)) {
-                return parsed.join(', ')
-              }
-              return String(parsed)
-            } catch (parseErr) {
-              // If JSON parse fails, just return the raw string
-              return err.error
-            }
-          }
-          return String(err.error || err.message || 'Unknown error')
-        })
-        message = errorMessages.join('; ')
-      }
-      
+    } catch (e: unknown) {
       toast({
         title: 'Request failed',
-        description: message,
+        description: getApiErrorDescription(e, 'Allocation failed'),
         variant: 'destructive',
       })
     }
@@ -265,7 +234,7 @@ export default function AdjacentReallocation() {
         <Alert variant="destructive">
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>
-              {(error as Error)?.message ?? 'Failed to load adjacent allocations.'}
+              {getApiErrorDescription(error, 'Failed to load adjacent allocations.')}
             </span>
             <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>
               Retry
@@ -372,10 +341,10 @@ export default function AdjacentReallocation() {
           <Card>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>Total Excess</CardTitle>
-              <CheckCircle2 className='h-4 w-4 text-blue-600' />
+              <CheckCircle2 className='h-4 w-4 text-primary' />
             </CardHeader>
             <CardContent>
-              <div className='text-2xl font-bold text-blue-600'>{summary.total_excess ?? '—'}</div>
+              <div className='text-2xl font-bold text-primary'>{summary.total_excess ?? '—'}</div>
               <p className='text-xs text-muted-foreground'>Sites available</p>
             </CardContent>
           </Card>
@@ -448,7 +417,7 @@ export default function AdjacentReallocation() {
                     </TableCell>
                     <TableCell className="text-center align-middle">
                       {c.eligibleExcess > 0 ? (
-                        <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">
+                        <Badge className="bg-primary/10 text-primary hover:bg-primary/10 border-primary/20">
                           {c.eligibleExcess}
                         </Badge>
                       ) : (
@@ -564,11 +533,11 @@ export default function AdjacentReallocation() {
             <DialogTitle>
               Reallocate from {selectedCommunity?.name ?? '—'}
             </DialogTitle>
-            <DialogDescription>
+            {/* <DialogDescription>
               POST{' '}
               <code className="text-xs">site_census_ids</code>,{' '}
               <code className="text-xs">to_community_id</code>, program, reason.
-            </DialogDescription>
+            </DialogDescription> */}
           </DialogHeader>
 
           <div className="space-y-2">
@@ -647,9 +616,9 @@ export default function AdjacentReallocation() {
             <Button
               onClick={() => void handleConfirmAllocate()}
               disabled={
-                allocateMutation.isPending ||
-                !targetCommunityId ||
-                selectedSiteCensusIds.length === 0
+                allocateMutation.isPending
+                // !targetCommunityId
+                // selectedSiteCensusIds.length === 0
               }
             >
               {allocateMutation.isPending ? (

@@ -19,8 +19,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Separator } from '@/components/ui/separator'
 import {
   Table,
   TableBody,
@@ -30,272 +28,706 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  Download,
   Search,
-  FileSpreadsheet,
   FileText,
-  FileCode,
-  Eye,
-  ArrowLeft,
-  Building2,
+  Users,
+  MapPin,
+  Scale,
   CheckCircle,
-  TrendingDown,
-  TrendingUp,
-  AlertTriangle,
-  BarChart3,
-  Info,
+  Loader2,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import {
-  useReportConfig,
-  useReportPreview,
-  useExportReport,
-} from '@/features/compliance-reports/hooks'
-import { useCensusYears } from '@/features/communities'
-import {
-  DateFilter,
-  ReportOptions,
-  ReportPreviewData,
-} from '@/features/compliance-reports/types'
+import { PaginationControls } from '@/components/pagination-controls'
+
+import { useCensusYears, useCommunities, useExportCommunities } from '@/features/communities'
+import { useCompliance, useExportCompliance } from '@/features/compliance/hooks'
+import { ComplianceFilters } from '@/features/compliance/types'
+import { useSites, useExportSiteCensusData } from '@/features/sites/hooks'
+import { SitesFilters } from '@/features/sites/types'
+import { useRegulatoryRules, useExportRegulatoryRules } from '@/features/regulatory-rules'
+import { CommunitiesQueryParams } from '@/features/communities/types'
+import { RegulatoryRulesQueryParams } from '@/features/regulatory-rules/types'
+
+// ─── Report type metadata ─────────────────────────────────────────────────────
+
+type ReportType = 'compliance-summary' | 'site-management' | 'rules' | 'community'
+
+const REPORT_TYPE_META: Record<
+  ReportType,
+  { label: string; description: string; Icon: React.ElementType; color: string }
+> = {
+  'compliance-summary': {
+    label: 'Compliance Summary Report',
+    description: 'Compliance rates, shortfalls and excesses by community and program.',
+    Icon: CheckCircle,
+    color: 'text-primary',
+  },
+  'site-management': {
+    label: 'Site Management Report',
+    description: 'Collection sites filtered by type, operator, status and census year.',
+    Icon: MapPin,
+    color: 'text-indigo-600',
+  },
+  'rules': {
+    label: 'Rules Report',
+    description: 'Regulatory rules filtered by program, category, type and status.',
+    Icon: Scale,
+    color: 'text-violet-600',
+  },
+  'community': {
+    label: 'Community Report',
+    description: 'Community census data filtered by status and census year.',
+    Icon: Users,
+    color: 'text-sky-600',
+  },
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ReportConfiguration() {
-  const [selectedYear, setSelectedYear] = useState<number>(2000)
-  const [reportType, setReportType] = useState<string>('compliance-summary')
-  const [selectedPrograms, setSelectedPrograms] = useState<string[]>([])
-  const [selectedMunicipalities, setSelectedMunicipalities] = useState<string[]>([])
-  const [municipalitySearch, setMunicipalitySearch] = useState('')
-  const [allSites, setAllSites] = useState(false)
-  const [dateFilter, setDateFilter] = useState<DateFilter>({
-    filterType: 'all',
-    startDate: '',
-    endDate: '',
-  })
-  const [options, setOptions] = useState<ReportOptions>({
-    include_charts: true,
-    include_details: true,
-  })
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewData, setPreviewData] = useState<ReportPreviewData | null>(null)
-
   const { toast } = useToast()
+
+  // ── Shared ──────────────────────────────────────────────────────────────────
+  const [reportType, setReportType] = useState<ReportType>('compliance-summary')
+  const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+
   const { data: censusYearsData } = useCensusYears()
-  const { data: config, isLoading: configLoading } = useReportConfig(selectedYear)
-  const previewMutation = useReportPreview()
-  const exportMutation = useExportReport()
 
-  // Set default year from census years
+  // Default to the latest census year once data loads
   useEffect(() => {
-    if (censusYearsData?.years && censusYearsData.years.length > 0) {
-      const latestYear = Math.max(...censusYearsData.years.map((y: { year: number }) => y.year))
-      setSelectedYear(latestYear)
+    if (censusYearsData?.years?.length && !selectedYear) {
+      const latest = Math.max(...censusYearsData.years.map((y: { year: number }) => y.year))
+      setSelectedYear(latest)
     }
-  }, [censusYearsData])
+  }, [censusYearsData, selectedYear])
 
-  const filteredMunicipalities = useMemo(() => {
-    if (!config?.municipalities) return []
-    if (!municipalitySearch.trim()) return config.municipalities
-    return config.municipalities.filter((m) =>
-      m.name.toLowerCase().includes(municipalitySearch.toLowerCase())
-    )
-  }, [config?.municipalities, municipalitySearch])
+  // ── Compliance filters (mirrors compliance-analysis.tsx) ─────────────────
+  const [compSearch, setCompSearch] = useState('')
+  const [compDebSearch, setCompDebSearch] = useState('')
+  const [compProgram, setCompProgram] = useState('')
+  const [compStatus, setCompStatus] = useState('')
 
-  const handleToggleProgram = (name: string) => {
-    setSelectedPrograms((prev) =>
-      prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name]
-    )
-  }
+  useEffect(() => {
+    const t = setTimeout(() => setCompDebSearch(compSearch), 300)
+    return () => clearTimeout(t)
+  }, [compSearch])
 
-  const handleToggleMunicipality = (name: string) => {
-    setSelectedMunicipalities((prev) =>
-      prev.includes(name) ? prev.filter((m) => m !== name) : [...prev, name]
-    )
-  }
+  const compFilters: ComplianceFilters = useMemo(
+    () => ({
+      search: compDebSearch || undefined,
+      program: compProgram || undefined,
+      status: (compStatus as 'compliant' | 'shortfall' | 'excess') || undefined,
+      year: selectedYear?.toString(),
+      page,
+      limit: pageSize,
+    }),
+    [compDebSearch, compProgram, compStatus, selectedYear, page, pageSize],
+  )
 
-  const handleToggleAllSites = (checked: boolean) => {
-    setAllSites(checked)
-    if (checked) {
-      setSelectedMunicipalities([])
-    }
-  }
+  // ── Sites filters (mirrors siteManagement.tsx) ────────────────────────────
+  const [siteSearch, setSiteSearch] = useState('')
+  const [siteDebSearch, setSiteDebSearch] = useState('')
+  const [siteSiteType, setSiteSiteType] = useState('')
+  const [siteOperatorType, setSiteOperatorType] = useState('all')
+  const [siteIsActive, setSiteIsActive] = useState('all')
 
-  const handleSelectAllMunicipalities = () => {
-    if (config?.municipalities) {
-      const all = config.municipalities.map((m) => m.name)
-      setSelectedMunicipalities(all)
-      setAllSites(false)
-    }
-  }
+  useEffect(() => {
+    const t = setTimeout(() => setSiteDebSearch(siteSearch), 300)
+    return () => clearTimeout(t)
+  }, [siteSearch])
 
-  const handleClearMunicipalities = () => {
-    setSelectedMunicipalities([])
-    setAllSites(false)
-  }
-
-  const buildPayload = () => {
-    return {
-      report_type: reportType,
+  const siteFilters: SitesFilters = useMemo(
+    () => ({
+      search: siteDebSearch || undefined,
+      site_type: siteSiteType || undefined,
+      operator_type: siteOperatorType !== 'all' ? siteOperatorType : undefined,
+      is_active: siteIsActive !== 'all' ? (siteIsActive as any) : undefined,
       year: selectedYear,
-      programs: selectedPrograms,
-      municipalities: allSites ? [] : selectedMunicipalities,
-      date_filter: dateFilter,
-      options,
-    }
-  }
+      page,
+      limit: pageSize,
+    }),
+    [siteDebSearch, siteSiteType, siteOperatorType, siteIsActive, selectedYear, page, pageSize],
+  )
 
-  const handlePreview = async () => {
+  // ── Rules filters (mirrors regulatory-rules-management.tsx) ──────────────
+  const [rulesSearch, setRulesSearch] = useState('')
+  const [rulesDebSearch, setRulesDebSearch] = useState('')
+  const [rulesProgram, setRulesProgram] = useState('all')
+  const [rulesCategory, setRulesCategory] = useState('all')
+  const [rulesRuleType, setRulesRuleType] = useState('all')
+  const [rulesIsActive, setRulesIsActive] = useState('all')
+
+  useEffect(() => {
+    const t = setTimeout(() => setRulesDebSearch(rulesSearch), 300)
+    return () => clearTimeout(t)
+  }, [rulesSearch])
+
+  const rulesFilters: RegulatoryRulesQueryParams = useMemo(
+    () => ({
+      search: rulesDebSearch || undefined,
+      program: rulesProgram !== 'all' ? rulesProgram : undefined,
+      category: rulesCategory !== 'all' ? rulesCategory : undefined,
+      rule_type: rulesRuleType !== 'all' ? rulesRuleType : undefined,
+      is_active: rulesIsActive !== 'all' ? rulesIsActive : undefined,
+      year: selectedYear,
+      page,
+      limit: pageSize,
+    }),
+    [rulesDebSearch, rulesProgram, rulesCategory, rulesRuleType, rulesIsActive, selectedYear, page, pageSize],
+  )
+
+  // ── Community filters (mirrors communities-management.tsx) ────────────────
+  const [commSearch, setCommSearch] = useState('')
+  const [commDebSearch, setCommDebSearch] = useState('')
+  const [commIsActive, setCommIsActive] = useState('all')
+
+  useEffect(() => {
+    const t = setTimeout(() => setCommDebSearch(commSearch), 300)
+    return () => clearTimeout(t)
+  }, [commSearch])
+
+  const communityFilters: CommunitiesQueryParams = useMemo(
+    () => ({
+      search: commDebSearch || undefined,
+      is_active: commIsActive !== 'all' ? commIsActive : undefined,
+      year: selectedYear,
+      page,
+      limit: pageSize,
+    }),
+    [commDebSearch, commIsActive, selectedYear, page, pageSize],
+  )
+
+  // Reset to first page when report type, page size, or any listing filter changes
+  useEffect(() => {
+    setPage(1)
+  }, [
+    reportType,
+    selectedYear,
+    pageSize,
+    compDebSearch,
+    compProgram,
+    compStatus,
+    siteDebSearch,
+    siteSiteType,
+    siteOperatorType,
+    siteIsActive,
+    rulesDebSearch,
+    rulesProgram,
+    rulesCategory,
+    rulesRuleType,
+    rulesIsActive,
+    commDebSearch,
+    commIsActive,
+  ])
+
+  // ── Data queries (each enabled only for its report type) ──────────────────
+  const { data: compData, isLoading: compLoading } = useCompliance(
+    compFilters,
+    reportType === 'compliance-summary',
+  )
+  const { data: sitesData, isLoading: sitesLoading } = useSites(
+    siteFilters,
+    reportType === 'site-management',
+  )
+  const { data: rulesData, isLoading: rulesLoading } = useRegulatoryRules(
+    rulesFilters,
+    reportType === 'rules',
+  )
+  const { data: communityData, isLoading: communityLoading } = useCommunities(
+    communityFilters,
+    reportType === 'community',
+  )
+
+  // ── Export mutations ──────────────────────────────────────────────────────
+  const exportCompMutation = useExportCompliance()
+  const exportSitesMutation = useExportSiteCensusData()
+  const exportRulesMutation = useExportRegulatoryRules()
+  const exportCommMutation = useExportCommunities()
+
+  const isExporting =
+    exportCompMutation.isPending ||
+    exportSitesMutation.isPending ||
+    exportRulesMutation.isPending ||
+    exportCommMutation.isPending
+
+  const handleExport = async () => {
     try {
-      const data = await previewMutation.mutateAsync(buildPayload())
-      setPreviewData(data)
-      setShowPreview(true)
-    } catch (err: any) {
-      toast({
-        title: 'Preview failed',
-        description: err?.message || 'Unable to generate preview. Please try again.',
-        variant: 'destructive',
-      })
-    }
-  }
+      let blob: Blob
+      let filename: string
 
-  const handleExport = async (format: 'excel' | 'word' | 'pdf') => {
-    try {
-      const blob = await exportMutation.mutateAsync({
-        ...buildPayload(),
-        format,
-      })
-
-      const extensionMap = { excel: 'xlsx', word: 'docx', pdf: 'pdf' }
-      const mimeMap = {
-        excel: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        pdf: 'application/pdf',
+      switch (reportType) {
+        case 'compliance-summary': {
+          blob = await exportCompMutation.mutateAsync({
+            search: compDebSearch || undefined,
+            program: compProgram || undefined,
+            status: (compStatus as any) || undefined,
+            year: selectedYear?.toString(),
+          } as ComplianceFilters)
+          filename = `compliance-report-${selectedYear ?? 'all'}.csv`
+          break
+        }
+        case 'site-management': {
+          blob = await exportSitesMutation.mutateAsync({
+            search: siteDebSearch || undefined,
+            site_type: siteSiteType || undefined,
+            operator_type: siteOperatorType !== 'all' ? siteOperatorType : undefined,
+            is_active: siteIsActive !== 'all' ? (siteIsActive as any) : undefined,
+            year: selectedYear,
+          } as SitesFilters)
+          filename = `sites-report-${selectedYear ?? 'all'}.csv`
+          break
+        }
+        case 'rules': {
+          blob = await exportRulesMutation.mutateAsync({
+            search: rulesDebSearch || undefined,
+            program: rulesProgram !== 'all' ? rulesProgram : undefined,
+            category: rulesCategory !== 'all' ? rulesCategory : undefined,
+            rule_type: rulesRuleType !== 'all' ? rulesRuleType : undefined,
+            is_active: rulesIsActive !== 'all' ? rulesIsActive : undefined,
+            year: selectedYear,
+          } as RegulatoryRulesQueryParams)
+          filename = `rules-report-${selectedYear ?? 'all'}.csv`
+          break
+        }
+        case 'community': {
+          blob = await exportCommMutation.mutateAsync({
+            search: commDebSearch || undefined,
+            is_active: commIsActive !== 'all' ? commIsActive : undefined,
+            year: selectedYear,
+          } as CommunitiesQueryParams)
+          filename = `community-report-${selectedYear ?? 'all'}.csv`
+          break
+        }
       }
 
-      const url = window.URL.createObjectURL(new Blob([blob], { type: mimeMap[format] }))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `compliance-report-${selectedYear}.${extensionMap[format]}`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-
-      toast({
-        title: 'Generating report',
-        description: 'Your download will begin shortly.',
-      })
+      downloadBlob(blob!, filename!)
+      toast({ title: 'Export complete', description: `${filename!} downloaded.` })
     } catch (err: any) {
       toast({
         title: 'Export failed',
-        description: err?.message || 'Failed to generate report. Please check your selections and try again.',
+        description: err?.message || 'Unable to export data.',
         variant: 'destructive',
       })
     }
   }
 
-  if (showPreview && previewData) {
-    return (
-      <div className='space-y-6'>
-        <div className='flex items-center gap-2'>
-          <Button variant='outline' onClick={() => setShowPreview(false)}>
-            <ArrowLeft className='h-4 w-4 mr-2' />
-            Back to Configuration
-          </Button>
-        </div>
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const meta = REPORT_TYPE_META[reportType]
+  const sortedYears = useMemo(
+    () =>
+      [...(censusYearsData?.years ?? [])].sort(
+        (a: { year: number }, b: { year: number }) => b.year - a.year,
+      ),
+    [censusYearsData],
+  )
 
-        <div>
-          <h3 className='text-xl font-bold tracking-tight'>Report Preview</h3>
-          <p className='text-sm text-muted-foreground mt-1'>
-            Preview of Compliance Summary Report
-          </p>
-        </div>
+  // ── Preview counts (for badge in header) ─────────────────────────────────
+  const previewCount =
+    reportType === 'compliance-summary'
+      ? compData?.count
+      : reportType === 'site-management'
+      ? sitesData?.count
+      : reportType === 'rules'
+      ? rulesData?.count
+      : communityData?.count
 
-        {/* Executive Summary */}
-        <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4'>
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Total Sites</CardTitle>
-              <Building2 className='h-4 w-4 text-muted-foreground' />
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold'>
-                {previewData.complianceData.totalSites}
+  const isLoading =
+    reportType === 'compliance-summary'
+      ? compLoading
+      : reportType === 'site-management'
+      ? sitesLoading
+      : reportType === 'rules'
+      ? rulesLoading
+      : communityLoading
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
+  return (
+    <div className='space-y-5'>
+
+      {/* ── Report type + Year ─────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className='pb-3'>
+          <CardTitle className='flex items-center gap-2 text-base'>
+            <FileText className='h-5 w-5' />
+            Report Configuration
+          </CardTitle>
+          <CardDescription>
+            Select a report type and apply filters, then preview or export the data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end'>
+            <div className='space-y-1'>
+              <Label>Report Type</Label>
+              <Select
+                value={reportType}
+                onValueChange={(v) => setReportType(v as ReportType)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(REPORT_TYPE_META) as [ReportType, typeof meta][]).map(
+                    ([key, m]) => (
+                      <SelectItem key={key} value={key}>
+                        {m.label}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className='space-y-1'>
+              <Label>Census Year</Label>
+              <Select
+                value={selectedYear?.toString() ?? ''}
+                onValueChange={(v) => setSelectedYear(parseInt(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder='Select year' />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedYears.map((y: { id: number; year: number }) => (
+                    <SelectItem key={y.id} value={y.year.toString()}>
+                      {y.year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className='flex items-end gap-2'>
+              <Button
+                onClick={handleExport}
+                disabled={isExporting}
+                className='w-full'
+                variant='outline'
+              >
+                {isExporting ? (
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' />
+                ) : (
+                  <Download className='h-4 w-4 mr-2' />
+                )}
+                {isExporting ? 'Exporting…' : 'Export CSV'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Active report description badge */}
+          <div className='mt-4 flex items-center gap-2'>
+            <meta.Icon className={`h-4 w-4 ${meta.color}`} />
+            <span className='text-sm text-muted-foreground'>{meta.description}</span>
+            {previewCount !== undefined && (
+              <Badge variant='secondary' className='ml-auto'>
+                {previewCount} record{previewCount !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Filters ────────────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className='pb-3'>
+          <CardTitle className='text-sm font-semibold text-muted-foreground uppercase tracking-wide'>
+            Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* ── Compliance filters ── */}
+          {reportType === 'compliance-summary' && (
+            <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'>
+              <div className='space-y-1 sm:col-span-2 lg:col-span-2'>
+                <Label>Search (Census Subdivision)</Label>
+                <div className='relative'>
+                  <Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+                  <Input
+                    className='pl-9'
+                    placeholder='Search by census subdivision…'
+                    value={compSearch}
+                    onChange={(e) => setCompSearch(e.target.value)}
+                  />
+                </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Compliance Rate</CardTitle>
-              <CheckCircle className='h-4 w-4 text-green-600' />
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold text-green-600'>
-                {previewData.complianceData.totalMunicipalities > 0
-                  ? Math.round(
-                      (previewData.complianceData.compliantMunicipalities /
-                        previewData.complianceData.totalMunicipalities) *
-                        100
-                    )
-                  : 0}
-                %
+              <div className='space-y-1'>
+                <Label>Program</Label>
+                <Select value={compProgram || 'all'} onValueChange={(v) => setCompProgram(v === 'all' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder='All Programs' /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Programs</SelectItem>
+                    <SelectItem value='Paint'>Paint</SelectItem>
+                    <SelectItem value='Lighting'>Lighting</SelectItem>
+                    <SelectItem value='Solvents'>Solvents</SelectItem>
+                    <SelectItem value='Pesticides'>Pesticides</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Shortfalls</CardTitle>
-              <TrendingDown className='h-4 w-4 text-red-600' />
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold text-red-600'>
-                {previewData.complianceData.shortfalls}
+              <div className='space-y-1'>
+                <Label>Status</Label>
+                <Select value={compStatus || 'all'} onValueChange={(v) => setCompStatus(v === 'all' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder='All Statuses' /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Statuses</SelectItem>
+                    <SelectItem value='compliant'>Compliant</SelectItem>
+                    <SelectItem value='shortfall'>Shortfall</SelectItem>
+                    <SelectItem value='excess'>Excess</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          )}
 
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Excesses</CardTitle>
-              <TrendingUp className='h-4 w-4 text-blue-600' />
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold text-blue-600'>
-                {previewData.complianceData.excesses}
+          {/* ── Site Management filters ── */}
+          {reportType === 'site-management' && (
+            <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'>
+              <div className='space-y-1 sm:col-span-2'>
+                <Label>Search</Label>
+                <div className='relative'>
+                  <Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+                  <Input
+                    className='pl-9'
+                    placeholder='Search sites…'
+                    value={siteSearch}
+                    onChange={(e) => setSiteSearch(e.target.value)}
+                  />
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Program Breakdown */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Program Breakdown</CardTitle>
-            <CardDescription>Compliance status by program</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className='overflow-x-auto'>
+              <div className='space-y-1'>
+                <Label>Site Type</Label>
+                <Select value={siteSiteType || 'all'} onValueChange={(v) => setSiteSiteType(v === 'all' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder='All Types' /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Types</SelectItem>
+                    <SelectItem value='Collection Site'>Collection Site</SelectItem>
+                    <SelectItem value='Event'>Event</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className='space-y-1'>
+                <Label>Operator Type</Label>
+                <Select value={siteOperatorType} onValueChange={setSiteOperatorType}>
+                  <SelectTrigger><SelectValue placeholder='All Operators' /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Operators</SelectItem>
+                    <SelectItem value='Retailer'>Retailer</SelectItem>
+                    <SelectItem value='Distributor'>Distributor</SelectItem>
+                    <SelectItem value='Municipal'>Municipal</SelectItem>
+                    <SelectItem value='First Nation/Indigenous'>First Nation / Indigenous</SelectItem>
+                    <SelectItem value='Private Depot'>Private Depot</SelectItem>
+                    <SelectItem value='Product Care'>Product Care</SelectItem>
+                    <SelectItem value='Regional District'>Regional District</SelectItem>
+                    <SelectItem value='Others'>Others</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className='space-y-1'>
+                <Label>Status</Label>
+                <Select value={siteIsActive} onValueChange={setSiteIsActive}>
+                  <SelectTrigger><SelectValue placeholder='All Status' /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Status</SelectItem>
+                    <SelectItem value='true'>Active</SelectItem>
+                    <SelectItem value='false'>Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {/* ── Rules filters ── */}
+          {reportType === 'rules' && (
+            <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'>
+              <div className='space-y-1 sm:col-span-2'>
+                <Label>Search</Label>
+                <div className='relative'>
+                  <Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+                  <Input
+                    className='pl-9'
+                    placeholder='Search rules…'
+                    value={rulesSearch}
+                    onChange={(e) => setRulesSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className='space-y-1'>
+                <Label>Program</Label>
+                <Select value={rulesProgram} onValueChange={setRulesProgram}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Programs</SelectItem>
+                    <SelectItem value='Paint'>Paint</SelectItem>
+                    <SelectItem value='Solvents'>Solvents</SelectItem>
+                    <SelectItem value='Pesticides'>Pesticides</SelectItem>
+                    <SelectItem value='Lighting'>Lighting</SelectItem>
+                    <SelectItem value='All'>All (Offsets)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className='space-y-1'>
+                <Label>Category</Label>
+                <Select value={rulesCategory} onValueChange={setRulesCategory}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Categories</SelectItem>
+                    <SelectItem value='HSP'>HSP (Hazardous & Special Products)</SelectItem>
+                    <SelectItem value='EEE'>EEE (Electrical & Electronic Equipment)</SelectItem>
+                    <SelectItem value='Offset'>Offset Rules</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className='space-y-1'>
+                <Label>Rule Type</Label>
+                <Select value={rulesRuleType} onValueChange={setRulesRuleType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Rule Types</SelectItem>
+                    <SelectItem value='Site Requirements'>Site Requirements</SelectItem>
+                    <SelectItem value='Events'>Events</SelectItem>
+                    <SelectItem value='Reallocation'>Reallocation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className='space-y-1'>
+                <Label>Status</Label>
+                <Select value={rulesIsActive} onValueChange={setRulesIsActive}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Status</SelectItem>
+                    <SelectItem value='true'>Active</SelectItem>
+                    <SelectItem value='false'>Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {/* ── Community filters ── */}
+          {reportType === 'community' && (
+            <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>
+              <div className='space-y-1 sm:col-span-2'>
+                <Label>Search</Label>
+                <div className='relative'>
+                  <Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+                  <Input
+                    className='pl-9'
+                    placeholder='Search communities…'
+                    value={commSearch}
+                    onChange={(e) => setCommSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className='space-y-1'>
+                <Label>Status</Label>
+                <Select value={commIsActive} onValueChange={setCommIsActive}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>All Status</SelectItem>
+                    <SelectItem value='true'>Active</SelectItem>
+                    <SelectItem value='false'>Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Preview Results ────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className='pb-3'>
+          <div className='flex items-center justify-between'>
+            <div>
+              <CardTitle className='text-base'>Preview</CardTitle>
+              <CardDescription>
+                Paginated listing using the same APIs as the management pages.{' '}
+                <span className='font-medium'>Export CSV</span> downloads the full filtered dataset (not limited to this page).
+              </CardDescription>
+            </div>
+            <Button
+              onClick={handleExport}
+              disabled={isExporting}
+              size='sm'
+              variant='outline'
+            >
+              {isExporting ? (
+                <Loader2 className='h-4 w-4 mr-2 animate-spin' />
+              ) : (
+                <Download className='h-4 w-4 mr-2' />
+              )}
+              {isExporting ? 'Exporting…' : 'Export CSV'}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className='p-0'>
+          <div className='overflow-x-auto'>
+
+            {/* ── Compliance preview ── */}
+            {reportType === 'compliance-summary' && (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className='bg-gray-50'>Program</TableHead>
-                    <TableHead className='bg-gray-50'>Active Sites</TableHead>
-                    <TableHead className='bg-gray-50'>Municipalities Served</TableHead>
-                    <TableHead className='bg-gray-50'>Status</TableHead>
+                    <TableHead>Census Subdivision</TableHead>
+                    <TableHead>Program</TableHead>
+                    <TableHead>Required</TableHead>
+                    <TableHead>Actual</TableHead>
+                    <TableHead>Shortfall</TableHead>
+                    <TableHead>Excess</TableHead>
+                    <TableHead>Rate</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {previewData.programBreakdown.length === 0 ? (
+                  {compLoading ? (
                     <TableRow>
-                      <TableCell colSpan={4} className='text-center py-8 text-muted-foreground'>
-                        No program data available
+                      <TableCell colSpan={8} className='text-center py-10 text-muted-foreground'>
+                        <Loader2 className='h-5 w-5 animate-spin inline-block mr-2' />Loading…
+                      </TableCell>
+                    </TableRow>
+                  ) : (compData?.results ?? []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className='text-center py-10 text-muted-foreground'>
+                        No results found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    previewData.programBreakdown.map((row, i) => (
-                      <TableRow key={i}>
-                        <TableCell className='font-medium'>{row.program}</TableCell>
-                        <TableCell>{row.activeSites}</TableCell>
-                        <TableCell>{row.municipalitiesServed}</TableCell>
+                    (compData?.results ?? []).map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className='font-medium'>{row.community_name}</TableCell>
+                        <TableCell>{row.program}</TableCell>
+                        <TableCell>{row.required_sites}</TableCell>
+                        <TableCell>{row.actual_sites}</TableCell>
+                        <TableCell>{row.shortfall}</TableCell>
+                        <TableCell>{row.excess}</TableCell>
+                        <TableCell>{row.compliance_rate}%</TableCell>
                         <TableCell>
                           <Badge
                             variant={
@@ -314,371 +746,256 @@ export default function ReportConfiguration() {
                   )}
                 </TableBody>
               </Table>
-            </div>
-          </CardContent>
-        </Card>
+            )}
 
-        {/* Municipality Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Municipality Summary</CardTitle>
-            <CardDescription>Compliance summary by municipality</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className='overflow-x-auto'>
+            {/* ── Sites preview ── */}
+            {reportType === 'site-management' && (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className='bg-gray-50'>Municipality</TableHead>
-                    <TableHead className='bg-gray-50'>Population</TableHead>
-                    <TableHead className='bg-gray-50'>Active Sites</TableHead>
-                    <TableHead className='bg-gray-50'>Programs Served</TableHead>
-                    <TableHead className='bg-gray-50'>Tier</TableHead>
+                    <TableHead>Site</TableHead>
+                    <TableHead>Site #</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Operator Type</TableHead>
+                    <TableHead>Community</TableHead>
+                    <TableHead>Programs</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {previewData.municipalitySummary.length === 0 ? (
+                  {sitesLoading ? (
                     <TableRow>
-                      <TableCell colSpan={5} className='text-center py-8 text-muted-foreground'>
-                        No municipality data available
+                      <TableCell colSpan={7} className='text-center py-10 text-muted-foreground'>
+                        <Loader2 className='h-5 w-5 animate-spin inline-block mr-2' />Loading…
+                      </TableCell>
+                    </TableRow>
+                  ) : (sitesData?.results ?? []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className='text-center py-10 text-muted-foreground'>
+                        No sites found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    previewData.municipalitySummary.map((row, i) => (
-                      <TableRow key={i}>
-                        <TableCell className='font-medium'>{row.municipality}</TableCell>
-                        <TableCell>{row.population.toLocaleString()}</TableCell>
-                        <TableCell>{row.activeSites}</TableCell>
-                        <TableCell>{row.programsServed.join(', ')}</TableCell>
-                        <TableCell>{row.tier}</TableCell>
+                    (sitesData?.results ?? []).map((site) => (
+                      <TableRow key={site.id}>
+                        <TableCell>
+                          <div className='font-medium'>{site.site_name}</div>
+                          <div className='text-xs text-muted-foreground'>{site.address_city}</div>
+                        </TableCell>
+                        <TableCell className='text-sm text-muted-foreground'>
+                          {site.site_number?.trim() || site.site?.trim() || '—'}
+                        </TableCell>
+                        <TableCell>{site.site_type || '—'}</TableCell>
+                        <TableCell>{site.operator_type || '—'}</TableCell>
+                        <TableCell>{site.community_name || site.community || '—'}</TableCell>
+                        <TableCell>
+                          {[
+                            site.program_paint && 'Paint',
+                            site.program_lights && 'Lighting',
+                            site.program_solvents && 'Solvents',
+                            site.program_pesticides && 'Pesticides',
+                            site.program_fertilizers && 'Fertilizers',
+                          ]
+                            .filter(Boolean)
+                            .join(', ') || '—'}
+                        </TableCell>
+                        <TableCell>
+                          {site.is_active ? (
+                            <Badge className='bg-green-100 text-green-800'>Active</Badge>
+                          ) : (
+                            <Badge variant='secondary'>Inactive</Badge>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
               </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  return (
-    <div className='space-y-6'>
-      {/* Header */}
-      <div>
-        <h3 className='text-xl font-bold tracking-tight'>Report Configuration</h3>
-        <p className='text-sm text-muted-foreground mt-1'>
-          Configure and generate compliance reports for export.
-        </p>
-      </div>
-
-      {/* Year + Report Type */}
-      <Card>
-        <CardContent className='pt-6'>
-          <div className='flex flex-col sm:flex-row gap-4'>
-            <div className='flex-1 space-y-2'>
-              <Label>Census Year</Label>
-              <Select
-                value={selectedYear.toString()}
-                onValueChange={(v) => setSelectedYear(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder='Select year' />
-                </SelectTrigger>
-                <SelectContent>
-                  {censusYearsData?.years
-                    ?.sort((a: { year: number }, b: { year: number }) => b.year - a.year)
-                    .map((year: { year: number; id: number }) => (
-                      <SelectItem key={year.id} value={year.year.toString()}>
-                        {year.year}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='flex-1 space-y-2'>
-              <Label>Report Type</Label>
-              <Select value={reportType} onValueChange={setReportType}>
-                <SelectTrigger>
-                  <SelectValue placeholder='Select report type' />
-                </SelectTrigger>
-                <SelectContent>
-                  {(config?.report_types || []).map((rt) => (
-                    <SelectItem key={rt.value} value={rt.value}>
-                      {rt.label}
-                    </SelectItem>
-                  ))}
-                  {!config && (
-                    <SelectItem value='compliance-summary'>
-                      Compliance Summary Report
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filters Section */}
-      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
-        {/* Programs */}
-        <Card>
-          <CardHeader>
-            <CardTitle className='text-base'>Programs</CardTitle>
-            <CardDescription>
-              Select programs to include in the report
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {configLoading ? (
-              <div className='text-sm text-muted-foreground'>Loading programs...</div>
-            ) : (
-              <div className='space-y-3 max-h-80 overflow-y-auto pr-2'>
-                {(config?.programs || []).map((program) => (
-                  <div key={program.name} className='flex items-center space-x-3'>
-                    <Checkbox
-                      id={`program-${program.name}`}
-                      checked={selectedPrograms.includes(program.name)}
-                      onCheckedChange={() => handleToggleProgram(program.name)}
-                    />
-                    <Label
-                      htmlFor={`program-${program.name}`}
-                      className='flex-1 text-sm cursor-pointer'
-                    >
-                      {program.name}
-                    </Label>
-                    <Badge variant='outline' className='text-xs'>
-                      {program.active_site_count} sites
-                    </Badge>
-                  </div>
-                ))}
-                {(!config?.programs || config.programs.length === 0) && (
-                  <div className='text-sm text-muted-foreground'>No programs available</div>
-                )}
-              </div>
             )}
-          </CardContent>
-        </Card>
 
-        {/* Municipalities */}
-        <Card>
-          <CardHeader>
-            <CardTitle className='text-base'>Municipalities</CardTitle>
-            <CardDescription>
-              Select municipalities to include in the report
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className='space-y-3'>
-              <div className='flex items-center space-x-3'>
-                <Checkbox
-                  id='all-sites'
-                  checked={allSites}
-                  onCheckedChange={(c) => handleToggleAllSites(!!c)}
-                />
-                <Label htmlFor='all-sites' className='text-sm font-medium cursor-pointer'>
-                  All Sites
-                </Label>
-              </div>
-              <Separator />
-              <div className='relative'>
-                <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-                <Input
-                  placeholder='Search municipalities...'
-                  className='pl-10'
-                  value={municipalitySearch}
-                  onChange={(e) => setMunicipalitySearch(e.target.value)}
-                  disabled={allSites}
-                />
-              </div>
-              <div className='flex gap-2'>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={handleSelectAllMunicipalities}
-                  disabled={allSites}
-                >
-                  Select All
-                </Button>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={handleClearMunicipalities}
-                  disabled={allSites || selectedMunicipalities.length === 0}
-                >
-                  Clear
-                </Button>
-              </div>
-              <div className='space-y-2 max-h-60 overflow-y-auto pr-2'>
-                {configLoading ? (
-                  <div className='text-sm text-muted-foreground'>Loading municipalities...</div>
-                ) : (
-                  filteredMunicipalities.map((m) => (
-                    <div key={m.name} className='flex items-center space-x-3'>
-                      <Checkbox
-                        id={`municipality-${m.name}`}
-                        checked={selectedMunicipalities.includes(m.name)}
-                        onCheckedChange={() => handleToggleMunicipality(m.name)}
-                        disabled={allSites}
-                      />
-                      <Label
-                        htmlFor={`municipality-${m.name}`}
-                        className='flex-1 text-sm cursor-pointer'
-                      >
-                        {m.name}
-                      </Label>
-                      <div className='flex items-center gap-2'>
-                        <span className='text-xs text-muted-foreground'>
-                          {m.active_site_count} sites
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {!configLoading && filteredMunicipalities.length === 0 && (
-                  <div className='text-sm text-muted-foreground'>
-                    No municipalities found
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            {/* ── Rules preview ── */}
+            {reportType === 'rules' && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Rule</TableHead>
+                    <TableHead>Program</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Rule Type</TableHead>
+                    <TableHead>Population Range</TableHead>
+                    <TableHead>Year</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rulesLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className='text-center py-10 text-muted-foreground'>
+                        <Loader2 className='h-5 w-5 animate-spin inline-block mr-2' />Loading…
+                      </TableCell>
+                    </TableRow>
+                  ) : (rulesData?.results ?? []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className='text-center py-10 text-muted-foreground'>
+                        No rules found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    (rulesData?.results ?? []).map((rule) => (
+                      <TableRow key={rule.id}>
+                        <TableCell>
+                          <div className='font-medium'>{rule.name || rule.regulatory_rule}</div>
+                          {rule.description && (
+                            <div className='text-xs text-muted-foreground line-clamp-1'>
+                              {rule.description}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>{rule.program}</TableCell>
+                        <TableCell>{rule.category}</TableCell>
+                        <TableCell>{rule.rule_type}</TableCell>
+                        <TableCell className='text-sm'>
+                          {rule.min_population !== null && rule.min_population !== undefined
+                            ? rule.min_population.toLocaleString()
+                            : '—'}
+                          {' – '}
+                          {rule.max_population !== null && rule.max_population !== undefined
+                            ? rule.max_population.toLocaleString()
+                            : '∞'}
+                        </TableCell>
+                        <TableCell>{rule.year}</TableCell>
+                        <TableCell>
+                          {rule.is_active ? (
+                            <Badge className='bg-green-100 text-green-800'>Active</Badge>
+                          ) : (
+                            <Badge variant='secondary'>Inactive</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
 
-      {/* Date Range + Options */}
-      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
-        <Card>
-          <CardHeader>
-            <CardTitle className='text-base'>Date Filter</CardTitle>
-            <CardDescription>
-              Filter sites by activation or deactivation date
-            </CardDescription>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div className='space-y-2'>
-              <Label>Filter Type</Label>
-              <Select
-                value={dateFilter.filterType}
-                onValueChange={(v) =>
-                  setDateFilter((prev) => ({
-                    ...prev,
-                    filterType: v as DateFilter['filterType'],
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder='Select filter type' />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All Dates</SelectItem>
-                  <SelectItem value='activated'>Activated</SelectItem>
-                  <SelectItem value='deactivated'>Deactivated</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='grid grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <Label>Start Date</Label>
-                <Input
-                  type='date'
-                  value={dateFilter.startDate}
-                  onChange={(e) =>
-                    setDateFilter((prev) => ({ ...prev, startDate: e.target.value }))
-                  }
-                />
-              </div>
-              <div className='space-y-2'>
-                <Label>End Date</Label>
-                <Input
-                  type='date'
-                  value={dateFilter.endDate}
-                  onChange={(e) =>
-                    setDateFilter((prev) => ({ ...prev, endDate: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            {/* ── Community preview ── */}
+            {reportType === 'community' && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Community</TableHead>
+                    <TableHead>Population</TableHead>
+                    <TableHead>Tier</TableHead>
+                    <TableHead>Region</TableHead>
+                    <TableHead>Province</TableHead>
+                    <TableHead>Census Year</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {communityLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className='text-center py-10 text-muted-foreground'>
+                        <Loader2 className='h-5 w-5 animate-spin inline-block mr-2' />Loading…
+                      </TableCell>
+                    </TableRow>
+                  ) : (communityData?.results ?? []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className='text-center py-10 text-muted-foreground'>
+                        No communities found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    (communityData?.results ?? []).map((comm) => (
+                      <TableRow key={comm.id}>
+                        <TableCell className='font-medium'>{comm.community_name}</TableCell>
+                        <TableCell>
+                          {comm.population != null ? comm.population.toLocaleString() : '—'}
+                        </TableCell>
+                        <TableCell>{comm.tier || '—'}</TableCell>
+                        <TableCell>{comm.region || '—'}</TableCell>
+                        <TableCell>{comm.province || '—'}</TableCell>
+                        <TableCell>{comm.census_year_value}</TableCell>
+                        <TableCell>
+                          {comm.is_active ? (
+                            <Badge className='bg-green-100 text-green-800'>
+                              <CheckCircle className='h-3 w-3 mr-1' />
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge variant='secondary'>Inactive</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className='text-base'>Report Options</CardTitle>
-            <CardDescription>
-              Customize the content of the report
-            </CardDescription>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div className='flex items-center space-x-3'>
-              <Checkbox
-                id='include-charts'
-                checked={options.include_charts}
-                onCheckedChange={(c) =>
-                  setOptions((prev) => ({ ...prev, include_charts: !!c }))
-                }
+          </div>
+
+          <div className='px-4 pb-4 pt-2 border-t'>
+            {reportType === 'compliance-summary' && compData && (
+              <PaginationControls
+                page={page}
+                pageSize={pageSize}
+                totalCount={compData.count}
+                currentCount={compData.results?.length ?? 0}
+                onPageChange={setPage}
+                isLoading={compLoading}
+                hasNext={!!compData.next}
+                hasPrev={!!compData.previous}
+                label='results'
+                pageSizeOptions={[10, 20, 50, 100]}
+                onPageSizeChange={setPageSize}
               />
-              <Label htmlFor='include-charts' className='text-sm cursor-pointer flex items-center gap-2'>
-                <BarChart3 className='h-4 w-4 text-muted-foreground' />
-                Include charts and visualizations
-              </Label>
-            </div>
-            <div className='flex items-center space-x-3'>
-              <Checkbox
-                id='include-details'
-                checked={options.include_details}
-                onCheckedChange={(c) =>
-                  setOptions((prev) => ({ ...prev, include_details: !!c }))
-                }
+            )}
+            {reportType === 'site-management' && sitesData && (
+              <PaginationControls
+                page={page}
+                pageSize={pageSize}
+                totalCount={sitesData.count}
+                currentCount={sitesData.results?.length ?? 0}
+                onPageChange={setPage}
+                isLoading={sitesLoading}
+                hasNext={!!sitesData.next}
+                hasPrev={!!sitesData.previous}
+                label='sites'
+                pageSizeOptions={[10, 20, 50, 100]}
+                onPageSizeChange={setPageSize}
               />
-              <Label htmlFor='include-details' className='text-sm cursor-pointer flex items-center gap-2'>
-                <Info className='h-4 w-4 text-muted-foreground' />
-                Include detailed site information
-              </Label>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Actions */}
-      <Card>
-        <CardContent className='pt-6'>
-          <div className='flex flex-col sm:flex-row gap-3'>
-            <Button
-              variant='secondary'
-              onClick={handlePreview}
-              disabled={previewMutation.isPending}
-              className='flex-1'
-            >
-              <Eye className='h-4 w-4 mr-2' />
-              {previewMutation.isPending ? 'Generating Preview…' : 'Preview Report'}
-            </Button>
-            <Button
-              variant='outline'
-              onClick={() => handleExport('excel')}
-              disabled={exportMutation.isPending}
-            >
-              <FileSpreadsheet className='h-4 w-4 mr-2' />
-              Export to Excel
-            </Button>
-            <Button
-              variant='outline'
-              onClick={() => handleExport('word')}
-              disabled={exportMutation.isPending}
-            >
-              <FileText className='h-4 w-4 mr-2' />
-              Export to Word
-            </Button>
-            <Button
-              variant='outline'
-              onClick={() => handleExport('pdf')}
-              disabled={exportMutation.isPending}
-            >
-              <FileCode className='h-4 w-4 mr-2' />
-              Export to PDF
-            </Button>
+            )}
+            {reportType === 'rules' && rulesData && (
+              <PaginationControls
+                page={page}
+                pageSize={pageSize}
+                totalCount={rulesData.count}
+                currentCount={rulesData.results?.length ?? 0}
+                onPageChange={setPage}
+                isLoading={rulesLoading}
+                hasNext={!!rulesData.next}
+                hasPrev={!!rulesData.previous}
+                label='rules'
+                pageSizeOptions={[10, 20, 50, 100]}
+                onPageSizeChange={setPageSize}
+              />
+            )}
+            {reportType === 'community' && communityData && (
+              <PaginationControls
+                page={page}
+                pageSize={pageSize}
+                totalCount={communityData.count}
+                currentCount={communityData.results?.length ?? 0}
+                onPageChange={setPage}
+                isLoading={communityLoading}
+                hasNext={!!communityData.next}
+                hasPrev={!!communityData.previous}
+                label='communities'
+                pageSizeOptions={[10, 20, 50, 100]}
+                onPageSizeChange={setPageSize}
+              />
+            )}
           </div>
         </CardContent>
       </Card>

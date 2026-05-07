@@ -8,6 +8,7 @@ export const fetchSites = async (filters: SitesFilters = {}): Promise<PaginatedS
   if (filters.status) queryParams.append("status", filters.status);
   if (filters.site_type) queryParams.append("site_type", filters.site_type);
   if (filters.operator_type) queryParams.append("operator_type", filters.operator_type);
+  if (filters.communities) queryParams.append("communities", filters.communities);
   if (filters.residential !== undefined) queryParams.append("residential", filters.residential.toString());
   if (filters.sort) queryParams.append("sort", filters.sort);
   if (filters.year !== undefined) queryParams.append("year", filters.year.toString());
@@ -58,8 +59,18 @@ export const importSiteCensusData = async (file: File): Promise<any> => {
   return response.data;
 };
 
-export const exportSiteCensusData = async (): Promise<Blob> => {
-  const response = await axiosInstance.get('/api/sites/census-data/import-export/', {
+export const exportSiteCensusData = async (filters: SitesFilters = {}): Promise<Blob> => {
+  const queryParams = new URLSearchParams();
+
+  if (filters.search) queryParams.append("search", filters.search);
+  if (filters.status) queryParams.append("status", filters.status);
+  if (filters.site_type) queryParams.append("site_type", filters.site_type);
+  if (filters.operator_type) queryParams.append("operator_type", filters.operator_type);
+  if (filters.communities) queryParams.append("communities", filters.communities);
+  if (filters.year !== undefined) queryParams.append("year", filters.year.toString());
+  if (filters.is_active !== undefined) queryParams.append("is_active", filters.is_active.toString());
+
+  const response = await axiosInstance.get(`/api/sites/census-data/import-export/?${queryParams.toString()}`, {
     responseType: 'blob',
   });
 

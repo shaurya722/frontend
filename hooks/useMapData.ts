@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import axiosInstance from '@/lib/axios-instance'
 
 interface Municipality {
   id: string
@@ -46,6 +47,7 @@ interface MapFilters {
   maxPopulation: string
   hasCoordinates: string
   search?: string
+  community_search?: string
   page?: number
   limit?: number
   municipalities_page?: number
@@ -56,42 +58,40 @@ export const useMapData = (filters: MapFilters) => {
   return useQuery<MapDataResponse>({
     queryKey: ['mapData', filters],
     queryFn: async () => {
-      const apiUrl = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/community/map-data/`)
-      if (filters.performancePeriod !== 'all') {
-        apiUrl.searchParams.set('census_year', filters.performancePeriod)
+      const params: Record<string, any> = {}
+      if (filters.performancePeriod && filters.performancePeriod !== 'all') {
+        params.census_year = filters.performancePeriod
       }
-      if (filters.siteTypes.length > 0) {
-        filters.siteTypes.forEach(type => apiUrl.searchParams.append('site_types', type))
-      }
-      if (filters.status !== 'all') {
-        apiUrl.searchParams.set('status', filters.status)
-      }
-      if (filters.operatorTypes.length > 0) {
-        filters.operatorTypes.forEach(type => apiUrl.searchParams.append('operator_types', type))
-      }
-      if (filters.programs.length > 0) {
-        filters.programs.forEach(program => apiUrl.searchParams.append('programs', program))
-      }
-      if (filters.page) {
-        apiUrl.searchParams.set('page', filters.page.toString())
+      if (filters.status && filters.status !== 'all') {
+        params.status = filters.status
       }
       if (filters.search && filters.search.trim().length > 0) {
-        apiUrl.searchParams.set('search', filters.search)
+        params.search = filters.search
       }
-      if (filters.limit) {
-        apiUrl.searchParams.set('limit', filters.limit.toString())
+      if (filters.community_search && filters.community_search.trim().length > 0) {
+        params.community_search = filters.community_search
       }
-      if (filters.municipalities_page) {
-        apiUrl.searchParams.set('municipalities_page', filters.municipalities_page.toString())
+      if (filters.page) params.page = filters.page
+      if (filters.limit) params.limit = filters.limit
+      if (filters.municipalities_page) params.municipalities_page = filters.municipalities_page
+      if (filters.municipalities_limit) params.municipalities_limit = filters.municipalities_limit
+      if (Array.isArray(filters.siteTypes) && filters.siteTypes.length > 0) {
+        params.site_types = filters.siteTypes
       }
-      if (filters.municipalities_limit) {
-        apiUrl.searchParams.set('municipalities_limit', filters.municipalities_limit.toString())
+      if (Array.isArray(filters.operatorTypes) && filters.operatorTypes.length > 0) {
+        params.operator_types = filters.operatorTypes
       }
-      const response = await fetch(apiUrl.toString())
-      if (!response.ok) {
-        throw new Error('Failed to fetch map data')
+      if (Array.isArray(filters.programs) && filters.programs.length > 0) {
+        params.programs = filters.programs
       }
-      return response.json()
+      if (filters.municipality && filters.municipality !== 'all') {
+        params.communities = filters.municipality
+      }
+
+      const res = await axiosInstance.get<MapDataResponse>('/api/community/map-data/', {
+        params,
+      })
+      return res.data
     },
   })
 }

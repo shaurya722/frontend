@@ -35,7 +35,7 @@ const inter = localFont({
 })
 
 export const metadata: Metadata = {
-  title: "ArcGIS Compliance Tool",
+  title: "Arc Ontario Compliance Tool",
   description: "Ontario HSP & EEE Collection Site Assessment",
   generator: "v0.app",
 }
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#2563eb",
+  themeColor: "#1e3a8a",
 }
 
 export default function RootLayout({
@@ -53,7 +53,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${inter.className} antialiased h-full`}>
+      <body className={`${inter.className} h-full`}>
         <QueryProvider>
           <AuthGuard>{children}</AuthGuard>
           <Toaster />

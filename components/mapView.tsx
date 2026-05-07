@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   Suspense,
   lazy,
 } from "react";
@@ -75,7 +76,7 @@ import type {
 } from "@/features/map-communities/types";
 import { useCensusYears } from "@/hooks/useCensusYears";
 import { useMapData } from "@/hooks/useMapData";
-import { useCommunityDropdown } from "@/features/communities";
+import { useInfiniteCommunityDropdown } from "@/features/communities";
 
 // Lazy load the Leaflet map component
 const LeafletMap = lazy(() => import("./leaflet-map"));
@@ -108,10 +109,29 @@ interface CensusYear {
   year: number;
 }
 
+interface MapDataPagination {
+  sites?: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+    total_active?: number;
+    total_inactive?: number;
+    total_overall?: number;
+  };
+  municipalities?: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
 interface MapDataResponse {
   sites: CollectionSite[];
   municipalities: Municipality[];
   census_year: CensusYear;
+  pagination?: MapDataPagination;
 }
 
 interface MapViewProps {
@@ -164,9 +184,10 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     maxPopulation: "",
     hasCoordinates: "all", // 'all', 'with', 'without'
     page: 1,
-    limit: 1000,
+    limit: 2000,
     municipalities_page: 1,
-    municipalities_limit: 1000,
+    municipalities_limit: 2000,
+    community_search: "",
   });
 
   const [searchLocation, setSearchLocation] = useState("");
@@ -190,12 +211,15 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
   const [selectedEditCommunityId, setSelectedEditCommunityId] = useState("");
   const [deleteMapCommunityOpen, setDeleteMapCommunityOpen] = useState(false);
   const [unsavedPolygonClearedAt, setUnsavedPolygonClearedAt] = useState(0);
+  const [mapCommunitySearch, setMapCommunitySearch] = useState("");
 
   // API data state
   const [apiData, setApiData] = useState<MapDataResponse | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [visibleSitesCount, setVisibleSitesCount] = useState(8);
+  const sitesListEndRef = useRef<HTMLDivElement | null>(null);
 
   const { data: censusYearsData } = useCensusYears();
 
@@ -208,10 +232,43 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
     search: searchLocation,
   });
 
-  // Fetch communities for the selected year
-  const { data: communitiesDropdown } = useCommunityDropdown(
-    parseInt(mapFilters.performancePeriod) || undefined,
+  const mapCommunityYear = Number.parseInt(mapFilters.performancePeriod, 10);
+  const mapCommunityYearOk = Number.isFinite(mapCommunityYear);
+  const {
+    data: communitiesInfinite,
+    fetchNextPage: fetchNextCommunityPage,
+    hasNextPage: hasNextCommunityPage,
+    isFetchingNextPage: isFetchingNextCommunityPage,
+  } = useInfiniteCommunityDropdown(
+    mapCommunityYearOk ? mapCommunityYear : undefined,
+    mapCommunitySearch,
+    50,
+    mapCommunityYearOk,
   );
+  const mapCommunitySelectOptions = useMemo(() => {
+    const rows =
+      communitiesInfinite?.pages.flatMap((p) => p.communities) ?? [];
+    return [
+      { value: "all", label: "All" },
+      ...rows.map((c) => ({
+        value: c.id,
+        label: c.name,
+        itemKey: `${c.id}:${c.name}`,
+      })),
+    ];
+  }, [communitiesInfinite]);
+
+  useEffect(() => {
+    setMapCommunitySearch("");
+  }, [mapFilters.performancePeriod]);
+
+  // Debounce dropdown search into community_search API filter
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setMapFilters((prev) => ({ ...prev, community_search: mapCommunitySearch }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [mapCommunitySearch]);
 
   const { data: mapCommunitiesList = [] } = useMapCommunities();
   const createMapCommunityMutation = useCreateMapCommunity();
@@ -471,6 +528,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       limit: 30,
       municipalities_page: 1,
       municipalities_limit: 30,
+      community_search: "",
     });
     setSearchLocation("");
   };
@@ -486,7 +544,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       case "Pending":
         return "bg-blue-500";
       default:
-        return "bg-gray-500";
+                        return "bg-muted-foreground";
     }
   };
 
@@ -724,10 +782,8 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
 
   // Statistics for the dashboard
   const stats = useMemo(() => {
-    const totalSites = (filteredSites || []).length;
-    const activeSites = (filteredSites || []).filter(
-      (s: CollectionSite) => s.status === "Active",
-    ).length;
+    const totalSites = apiData?.pagination?.sites?.total_overall || 0;
+    const activeSites = apiData?.pagination?.sites?.total_active || 0;
     const sitesWithCoords = (filteredSites || []).filter(
       (s: CollectionSite) => s.latitude && s.longitude,
     ).length;
@@ -760,7 +816,32 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
       totalCommunities,
       totalPopulation,
     };
-  }, [filteredSites, safeMunicipalities]);
+  }, [apiData, filteredSites, mapFilters, safeMunicipalities, searchLocation]);
+
+  // Reset visible count when filters change
+  useEffect(() => {
+    setVisibleSitesCount(8);
+  }, [filteredSites]);
+
+  // Infinite scroll observer for sites list
+  useEffect(() => {
+    const el = sitesListEndRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleSitesCount((prev) =>
+            Math.min(prev + 8, filteredSites.length)
+          );
+        }
+      },
+      { root: el.parentElement || null, threshold: 0.1 }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [filteredSites.length]);
 
   return (
     <div className="space-y-6">
@@ -798,12 +879,59 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
         </Card>
       )}
 
+      {/* API Data Summary */}
+      {/* {apiData && (
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Census year:</span>{" "}
+                  <span className="font-medium">{apiData.census_year?.year}</span>
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Sites (overall):</span>{" "}
+                  <span className="font-medium">
+                    {apiData.pagination?.sites?.total_overall ??
+                      apiData.pagination?.sites?.total ??
+                      apiData.sites.length}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Active:</span>{" "}
+                  <span className="font-medium">
+                    {apiData.pagination?.sites?.total_active ?? "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Inactive:</span>{" "}
+                  <span className="font-medium">
+                    {apiData.pagination?.sites?.total_inactive ?? "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Communities (total):</span>{" "}
+                  <span className="font-medium">
+                    {apiData.pagination?.municipalities?.total ??
+                      apiData.municipalities.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )} */}
+
       {/* Statistics Dashboard */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-3">
-              <MapPin className="w-8 h-8 text-blue-600" />
+              <MapPin className="w-8 h-8 text-primary" />
               <div>
                 <p className="text-2xl font-bold">{stats.totalSites}</p>
                 <p className="text-xs text-muted-foreground">Total Sites</p>
@@ -1051,29 +1179,32 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </Select>
               </div>
               {/* Community Filter */}
-              <div className="space-y-1">
+              <div className="space-y-1 col-span-2">
                 <Label className="text-xs text-muted-foreground">
                   Community
                 </Label>
                 <SearchableSelect
                   value={mapFilters.municipality}
-                  onValueChange={(value) =>
-                    setMapFilters({ ...mapFilters, municipality: value })
-                  }
+                  onValueChange={(value) => {
+                    setMapFilters((prev) => ({
+                      ...prev,
+                      municipality: value,
+                      community_search: "",
+                    }));
+                    setMapCommunitySearch("");
+                  }}
                   placeholder="Community"
                   searchPlaceholder="Search community..."
                   triggerClassName="h-9"
-                  options={[
-                    { value: 'all', label: 'All' },
-                    ...(communitiesDropdown?.communities?.map((community) => ({
-                      value: community.name,
-                      label: community.name,
-                    })) ?? []),
-                  ]}
+                  onSearchChange={setMapCommunitySearch}
+                  hasNextPage={hasNextCommunityPage}
+                  isFetchingNextPage={isFetchingNextCommunityPage}
+                  onFetchNextPage={() => fetchNextCommunityPage()}
+                  options={mapCommunitySelectOptions}
                 />
               </div>
             
-                <Button variant="outline">Export</Button>
+                {/* <Button variant="outline">Export</Button> */}
            
               {/* Advanced Filters Toggle */}
               {/* <div className='space-y-1'>
@@ -1247,7 +1378,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   <div className="h-[600px] flex items-center justify-center">
                     <div className="text-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                      <p className="text-gray-600">Loading map...</p>
+                            <p className="text-muted-foreground">Loading map...</p>
                     </div>
                   </div>
                 }
@@ -1262,13 +1393,14 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   mapCommunities={mapCommunitiesList}
                   onPolygonEdited={handleMapPolygonEdited}
                   unsavedPolygonClearedAt={unsavedPolygonClearedAt}
+                  focusCommunityName={searchLocation}
                   // layers={mapLayers}
                 />
               </Suspense>
 
               {/* Loading Overlay */}
               {(isMapLoading || isLoadingData) && (
-                <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-[500] rounded-lg">
+                <div className="absolute inset-0 bg-background/90 flex items-center justify-center z-[500] rounded-lg">
                   <Card className="w-80">
                     <CardContent className="pt-6">
                       <div className="text-center space-y-4">
@@ -1279,18 +1411,18 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                               ? "Loading Census Data"
                               : "Loading Map"}
                           </h3>
-                          <p className="text-sm text-gray-600">
+                          <p className="text-sm text-muted-foreground">
                             {isLoadingData
                               ? `Loading data for ${mapFilters.performancePeriod} census year...`
                               : "Initializing OpenStreetMap"}
                           </p>
-                          <p className="text-xs text-gray-500 mt-2">
+                          <p className="text-xs text-muted-foreground mt-2">
                             {apiData
                               ? `Found ${apiData.sites.length} sites, ${apiData.municipalities.length} census communities, ${mapCommunitiesList.length} map boundaries`
                               : "Using demo data"}
                           </p>
                         </div>
-                        <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                           <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                           <span>
                             {isLoadingData
@@ -1305,7 +1437,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               )}
 
               {/* Map Legend Overlay */}
-              <div className="absolute bottom-4 left-4 bg-white p-2 rounded-lg shadow-lg z-[1000] max-w-xs text-xs">
+              <div className="absolute bottom-4 left-4 bg-card p-2 rounded-lg shadow-lg z-[1000] max-w-xs text-xs border border-border">
                 <div className="text-xs font-semibold mb-2">
                   Legend – Operator Types
                 </div>
@@ -1314,7 +1446,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                     uniqueOperatorTypes.map((operatorType) => (
                       <div
                         key={operatorType}
-                        className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-gray-50 p-0.5 rounded transition-colors"
+                        className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/50 p-0.5 rounded transition-colors"
                         onClick={() => handleLegendClick(operatorType)}
                       >
                         <div
@@ -1327,7 +1459,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                       </div>
                     ))
                   ) : (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       No operator types available
                     </div>
                   )}
@@ -1389,7 +1521,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
           )} */}
 
           {/* Site Information Panel */}
-          <Card>
+          <Card className="h-[600px]">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <MapPin className="w-5 h-5" />
@@ -1398,16 +1530,16 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
               <CardDescription>
                 {filteredSites.length} sites visible{" "}
                 {isLoadingData && "(loading...)"}
-                {filteredSites.length !== stats.totalSites && (
-                  <span className="text-blue-600 ml-1">
+                {/* {filteredSites.length !== stats.totalSites && (
+                  <span className="text-primary ml-1">
                     (filtered from {stats.totalSites})
                   </span>
-                )}
+                )} */}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 max-h-96 overflow-y-auto">
+            <CardContent className="space-y-4 h-[470px] overflow-y-auto">
               {filteredSites.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   <p>No sites match current filters</p>
                   <p className="text-sm">
                     {isLoadingData
@@ -1416,16 +1548,16 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   </p>
                 </div>
               ) : (
-                filteredSites.slice(0, 8).map((site: CollectionSite) => (
+                filteredSites.slice(0, visibleSitesCount).map((site: CollectionSite) => (
                   <div
                     key={site.id}
-                    className="border rounded-lg p-3 space-y-2 hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="border border-border rounded-lg p-3 space-y-2 hover:bg-muted/40 cursor-pointer transition-colors"
                     onClick={() => handleSiteClick(site)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h4 className="font-medium text-sm">{site.name}</h4>
-                        <p className="text-xs text-gray-600">{site.address}</p>
+                        <p className="text-xs text-muted-foreground">{site.address}</p>
                       </div>
                       <Badge
                         className={`${getStatusColor(site.status || "")} text-white border-0`}
@@ -1466,9 +1598,9 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                   </div>
                 ))
               )}
-              {filteredSites.length > 8 && (
-                <div className="text-center text-sm text-gray-500 py-2">
-                  ... and {filteredSites.length - 8} more sites
+              {visibleSitesCount < filteredSites.length && (
+                <div ref={sitesListEndRef} className="text-center text-sm text-muted-foreground py-2">
+                  Loading more...
                 </div>
               )}
             </CardContent>
@@ -1489,7 +1621,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                     <h4 className='font-medium text-sm'>{municipality.name}</h4>
                     <Badge variant='outline'>{municipality.tier} Tier</Badge>
                   </div>
-                  <div className='text-xs text-gray-600'>
+                  <div className='text-xs text-muted-foreground'>
                     <div>
                       Population:{' '}
                       {(municipality.population || 0).toLocaleString()}
@@ -1506,7 +1638,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </div>
               ))}
               {safeMunicipalities.length > 6 && (
-                <div className='text-center text-sm text-gray-500'>
+                <div className='text-center text-sm text-muted-foreground'>
                   ... and {safeMunicipalities.length - 6} more communities
                 </div>
               )}
@@ -1525,7 +1657,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
             <div className="space-y-4">
               <div>
                 <h3 className="font-semibold text-lg">{selectedSite.name}</h3>
-                <p className="text-sm text-gray-600">{selectedSite.address}</p>
+                <p className="text-sm text-muted-foreground">{selectedSite.address}</p>
               </div>
               <Separator />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1570,7 +1702,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Coordinates</Label>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     {selectedSite.latitude != null &&
                     selectedSite.longitude != null
                       ? `${Number(selectedSite.latitude).toFixed(4)}, ${Number(selectedSite.longitude).toFixed(4)}`
@@ -1579,7 +1711,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Created</Label>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     {selectedSite.created_at
                       ? new Date(selectedSite.created_at).toLocaleDateString()
                       : "N/A"}
@@ -1597,7 +1729,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                     ))}
                   {(!selectedSite.programs ||
                     selectedSite.programs.length === 0) && (
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-muted-foreground">
                       No programs assigned
                     </span>
                   )}
@@ -1627,33 +1759,24 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
           }
         }}
       >
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] flex flex-col">
+        <DialogContent className="w-screen max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Save map community</DialogTitle>
-            <DialogDescription>
-              Choose a community by <strong>id</strong> (from{" "}
-              <code className="text-xs">
-                GET /api/community/map-communities/available/
-              </code>
-              ), then POST{" "}
-              <code className="text-xs">{"{ community_id, boundary }"}</code> to{" "}
-              <code className="text-xs">/api/community/map-communities/</code>.
-            </DialogDescription>
+            <DialogTitle>Save Community</DialogTitle>
+            <DialogDescription>Assign Community</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2 flex-1 min-h-0 flex flex-col">
             <div className="space-y-1">
-              <Label htmlFor="save-community-search">Search communities</Label>
               <Input
                 id="save-community-search"
                 value={saveCommunitySearch}
                 onChange={(e) => setSaveCommunitySearch(e.target.value)}
-                placeholder="e.g. Toronto, Tor"
+                placeholder="Search Community"
               />
             </div>
             {saveAvailableLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : (
-              <ScrollArea className="h-[min(280px,40vh)] rounded-md border p-2">
+              <ScrollArea className="h-[min(300px,42vh)] rounded-md border p-1.5">
                 <div className="space-y-2 pr-3">
                   {(saveAvailableData?.communities ?? []).length === 0 ? (
                     <p className="text-sm text-muted-foreground px-1">
@@ -1665,25 +1788,20 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                         key={c.id}
                         type="button"
                         onClick={() => setSelectedCreateCommunityId(c.id)}
-                        className={`w-full text-left rounded-md border px-2 py-2 text-sm transition-colors hover:bg-muted ${
+                        className={`w-full text-left rounded-md border px-2.5 py-2 text-sm transition-colors hover:bg-muted ${
                           selectedCreateCommunityId === c.id
                             ? "border-primary bg-muted"
                             : ""
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="font-medium truncate">{c.name}</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="font-medium truncate">{c.name}</span>
+                          </div>
                           {c.has_boundary ? (
-                            <Badge
-                              variant="secondary"
-                              className="shrink-0 text-[10px]"
-                            >
-                              has boundary
-                            </Badge>
+                            <Badge variant="secondary" className="shrink-0 text-[10px]">has boundary</Badge>
                           ) : null}
-                        </div>
-                        <div className="font-mono text-[11px] text-muted-foreground break-all">
-                          {c.id}
                         </div>
                       </button>
                     ))
@@ -1691,30 +1809,28 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </div>
               </ScrollArea>
             )}
-            {selectedCreateCommunityId ? (
-              <p className="text-xs text-muted-foreground font-mono break-all">
-                Selected: {selectedCreateCommunityId}
-              </p>
-            ) : null}
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
             <Button
               type="button"
               variant="outline"
-              onClick={handleSkipSaveMapCommunity}
+              className="sm:mr-auto"
+              onClick={() => handleSkipSaveMapCommunity()}
             >
-              Skip
+              Cancel
             </Button>
-            <Button
-              type="button"
-              onClick={() => void handleSaveMapCommunity()}
-              disabled={
-                createMapCommunityMutation.isPending ||
-                !selectedCreateCommunityId
-              }
-            >
-              {createMapCommunityMutation.isPending ? "Saving…" : "Save"}
-            </Button>
+            <div className="flex gap-2 sm:ml-auto">
+              <Button
+                type="button"
+                onClick={() => void handleSaveMapCommunity()}
+                disabled={
+                  createMapCommunityMutation.isPending ||
+                  !selectedCreateCommunityId
+                }
+              >
+                {createMapCommunityMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1731,7 +1847,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
           }
         }}
       >
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] flex flex-col">
+        <DialogContent className="w-screen max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingMapCommunity?.name}</DialogTitle>
             <DialogDescription>Assign Community</DialogDescription>
@@ -1748,7 +1864,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
             {editAvailableLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : (
-              <ScrollArea className="h-[min(280px,40vh)] rounded-md border p-2">
+              <ScrollArea className="h-[min(300px,42vh)] rounded-md border p-1.5">
                 <div className="space-y-2 pr-3">
                   {(editAvailableData?.communities ?? []).length === 0 ? (
                     <p className="text-sm text-muted-foreground px-1">
@@ -1760,21 +1876,19 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                         key={c.id}
                         type="button"
                         onClick={() => setSelectedEditCommunityId(c.id)}
-                        className={`w-full text-left rounded-md border px-2 py-2 text-sm transition-colors hover:bg-muted ${
+                        className={`w-full text-left rounded-md border px-2.5 py-2 text-sm transition-colors hover:bg-muted ${
                           selectedEditCommunityId === c.id
                             ? "border-primary bg-muted"
                             : ""
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="font-medium truncate">{c.name}</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="font-medium truncate">{c.name}</span>
+                          </div>
                           {c.has_boundary ? (
-                            <Badge
-                              variant="secondary"
-                              className="shrink-0 text-[10px]"
-                            >
-                              has boundary
-                            </Badge>
+                            <Badge variant="secondary" className="shrink-0 text-[10px]">has boundary</Badge>
                           ) : null}
                         </div>
                       </button>
@@ -1855,7 +1969,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
           </DialogHeader>
           {selectedLegendType && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/40 rounded-lg border border-border">
                 <div>
                   <Label className="text-sm font-medium">Total Sites</Label>
                   <p className="text-2xl font-bold">
@@ -1869,7 +1983,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 </div>
                 <div>
                   <Label className="text-sm font-medium">On Map</Label>
-                  <p className="text-2xl font-bold text-blue-600">
+                  <p className="text-2xl font-bold text-primary">
                     {
                       filteredSites.filter(
                         (s: CollectionSite) =>
@@ -1896,7 +2010,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                     .map((site: CollectionSite) => (
                       <div
                         key={site.id}
-                        className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                        className="border border-border rounded-lg p-3 hover:bg-muted/40 cursor-pointer transition-colors"
                         onClick={() => {
                           setSelectedSite(site);
                           setShowLegendInfo(false);
@@ -1906,7 +2020,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <h4 className="font-medium text-sm">{site.name}</h4>
-                            <p className="text-xs text-gray-600">
+                            <p className="text-xs text-muted-foreground">
                               {site.municipality?.name || "Unknown"}
                             </p>
                           </div>
@@ -1922,7 +2036,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 {filteredSites.filter(
                   (s: CollectionSite) => s.operator_type === selectedLegendType,
                 ).length > 10 && (
-                  <p className="text-sm text-gray-500 text-center mt-2">
+                  <p className="text-sm text-muted-foreground text-center mt-2">
                     ... and{" "}
                     {filteredSites.filter(
                       (s: CollectionSite) =>
@@ -1933,7 +2047,7 @@ export default function MapView({ sites, municipalities }: MapViewProps) {
                 )}
               </div>
 
-              <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
+              <div className="text-sm text-foreground bg-primary/5 p-3 rounded-lg border border-primary/20">
                 <strong>Tip:</strong> Click on any site above or on the map
                 markers to see detailed information.
               </div>

@@ -21,6 +21,7 @@ export interface AdjacentListParams {
   sort?: string
   page?: number
   limit?: number
+  search?: string
 }
 
 /** Raw site row from API (snake_case or camelCase) */

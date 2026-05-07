@@ -1,6 +1,7 @@
 export interface Site {
   id: number;
   site: string;
+  site_number?: string | null;
   census_year: number;
   census_year_value: number;
   community: string;
@@ -63,10 +64,12 @@ export interface PaginatedSitesResponse {
 
 export interface SitesFilters {
   search?: string;
+  site_number?: string;
   status?: string;
   site_type?: string;
   operator_type?: string;
   residential?: boolean;
+  communities?: string;
   sort?: string;
   year?: number;
   is_active?: boolean;

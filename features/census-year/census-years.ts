@@ -18,10 +18,14 @@ export interface CensusYearsResponse {
 
 export interface CreateCensusYearData {
   year: number
+  start_date?: string | null
+  end_date?: string | null
 }
 
 export interface UpdateCensusYearData {
   year: number
+  start_date?: string | null
+  end_date?: string | null
 }
 
 export interface GetCensusYearsParams {

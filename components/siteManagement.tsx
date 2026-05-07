@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
+import axiosInstance from '@/lib/axios-instance'
 import {
   Select,
   SelectContent,
@@ -41,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -71,6 +73,8 @@ import {
   ChevronUp,
   ChevronDown,
   Building2,
+  Clock,
+  BarChart3,
 } from 'lucide-react'
 
 import {
@@ -84,10 +88,24 @@ import {
   downloadSiteCensusTemplate,
 } from '@/features/sites'
 import type { SitesFilters, Site } from '@/features/sites'
-import { useCensusYears } from '@/features/communities/hooks'
+import { useCensusYears, useInfiniteCommunityDropdown } from '@/features/communities/hooks'
 
 import SiteFormDialog, { type CollectionSite, SITE_PROGRAMS, type SiteProgram } from './site-form-dialog'
 import { PaginationControls } from '@/components/pagination-controls'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+} from '@/components/ui/chart'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 const toDateInputValue = (value?: string | null) => {
   if (!value) return ''
@@ -185,6 +203,8 @@ export default function SiteManagement() {
   const [year, setYear] = useState<number | undefined>(undefined)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
+  const [communityId, setCommunityId] = useState<string>('all')
+  const [communitySearch, setCommunitySearch] = useState('')
 
   // Sort state
   const [sortOrder, setSortOrder] = useState<1 | -1>(-1)
@@ -199,6 +219,8 @@ export default function SiteManagement() {
   // Delete dialog state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [siteToDelete, setSiteToDelete] = useState<any | null>(null)
+  // Bulk delete dialog state
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false)
 
   // Import dialog state
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
@@ -216,7 +238,51 @@ export default function SiteManagement() {
 
   const { toast } = useToast()
 
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return
+    setBulkDeleting(true)
+    try {
+      await axiosInstance.post('/api/sites/bulk-delete/', { ids: selectedIds })
+      toast({ title: 'Deleted', description: `Removed ${selectedIds.length} site(s).` })
+      setSelectedIds([])
+      try { await refetch?.() } catch {}
+    } catch (e: any) {
+      toast({ title: 'Delete failed', description: e?.message || 'Could not delete selected sites.', variant: 'destructive' })
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   const { data: censusYears } = useCensusYears()
+
+  const {
+    data: communitiesInfinite,
+    fetchNextPage: fetchNextCommunityPage,
+    hasNextPage: hasNextCommunityPage,
+    isFetchingNextPage: isFetchingNextCommunityPage,
+  } = useInfiniteCommunityDropdown(
+    year,
+    communitySearch,
+    50,
+    year !== undefined,
+  )
+
+  const communitySelectOptions = useMemo(() => {
+    const rows =
+      communitiesInfinite?.pages.flatMap((p) => p.communities) ?? []
+    return [
+      { value: 'all', label: 'All' },
+      ...rows.map((c) => ({
+        value: c.id,
+        label: c.name,
+        itemKey: `${c.id}:${c.name}`,
+      })),
+    ]
+  }, [communitiesInfinite])
 
   useEffect(() => {
     if (censusYears?.years && censusYears.years.length > 0 && year === undefined) {
@@ -229,6 +295,10 @@ export default function SiteManagement() {
     return () => clearTimeout(timer)
   }, [search])
 
+  useEffect(() => {
+    setCommunitySearch('')
+  }, [year])
+
   const filters: SitesFilters = useMemo(() => ({
     search: debouncedSearch || undefined,
     // use is_active like communities-management: 'all' -> undefined, 'true'/'false' -> pass through
@@ -237,13 +307,33 @@ export default function SiteManagement() {
     site_type: siteType || undefined,
     // Normalize operator type: do not send 'all' to API
     operator_type: operatorType && operatorType !== 'all' ? operatorType : undefined,
+    communities: communityId && communityId !== 'all' ? communityId : undefined,
     year,
     sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
     page,
     limit,
-  }), [debouncedSearch, selectedStatus, siteType, operatorType, year, sortOrder, sortBy, page, limit])
+  }), [debouncedSearch, selectedStatus, siteType, operatorType, communityId, year, sortOrder, sortBy, page, limit])
 
-  const { data, isLoading, error } = useSites(filters, year !== undefined)
+  const { data, isLoading, error, refetch } = useSites(filters, year !== undefined)
+
+  const allVisibleIds = useMemo(() => (data?.results || []).map((s: any) => s.id as number), [data])
+  const allVisibleSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selectedIds.includes(id))
+  const someVisibleSelected = allVisibleIds.some((id) => selectedIds.includes(id)) && !allVisibleSelected
+
+  const toggleSelectAllVisible = (checked: boolean) => {
+    if (checked) {
+      const merged = Array.from(new Set([...selectedIds, ...allVisibleIds]))
+      setSelectedIds(merged)
+    } else {
+      const remaining = selectedIds.filter((id) => !allVisibleIds.includes(id))
+      setSelectedIds(remaining)
+    }
+  }
+
+  const toggleSelectOne = (id: number, checked: boolean) => {
+    if (checked) setSelectedIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+    else setSelectedIds((prev) => prev.filter((x) => x !== id))
+  }
 
   const { data: siteData, isLoading: siteLoading } = useSite(editingSiteId || undefined)
 
@@ -260,6 +350,78 @@ export default function SiteManagement() {
   const scheduledSites = data?.results.filter(site => site.site_start_date && new Date(site.site_start_date) > new Date()).length || 0
   const hasNext = Boolean(data?.next)
   const hasPrev = Boolean(data?.previous)
+
+  const upcomingEndDates = useMemo(() => {
+    const sites = data?.results || []
+    const now = new Date()
+    const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const sixtyDays = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000)
+    const ninetyDays = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
+
+    let within30 = 0
+    let within60 = 0
+    let within90 = 0
+    let beyond90 = 0
+
+    const programEndDates: Record<string, { within30: number; within60: number; within90: number; beyond90: number }> = {
+      Paint: { within30: 0, within60: 0, within90: 0, beyond90: 0 },
+      Lights: { within30: 0, within60: 0, within90: 0, beyond90: 0 },
+      Solvents: { within30: 0, within60: 0, within90: 0, beyond90: 0 },
+      Pesticides: { within30: 0, within60: 0, within90: 0, beyond90: 0 },
+      Fertilizers: { within30: 0, within60: 0, within90: 0, beyond90: 0 },
+    }
+
+    const checkEndDate = (endDate: string | null | undefined, program?: string) => {
+      if (!endDate) return
+      const date = new Date(endDate)
+      if (date < now) return
+
+      if (date <= thirtyDays) {
+        within30++
+        if (program && programEndDates[program]) programEndDates[program].within30++
+      } else if (date <= sixtyDays) {
+        within60++
+        if (program && programEndDates[program]) programEndDates[program].within60++
+      } else if (date <= ninetyDays) {
+        within90++
+        if (program && programEndDates[program]) programEndDates[program].within90++
+      } else {
+        beyond90++
+        if (program && programEndDates[program]) programEndDates[program].beyond90++
+      }
+    }
+
+    for (const site of sites) {
+      checkEndDate(site.site_end_date)
+      if (site.program_paint) checkEndDate(site.program_paint_end_date, 'Paint')
+      if (site.program_lights) checkEndDate(site.program_lights_end_date, 'Lights')
+      if (site.program_solvents) checkEndDate(site.program_solvents_end_date, 'Solvents')
+      if (site.program_pesticides) checkEndDate(site.program_pesticides_end_date, 'Pesticides')
+      if (site.program_fertilizers) checkEndDate(site.program_fertilizers_end_date, 'Fertilizers')
+    }
+
+    const timelineData = [
+      { period: 'Within 30 Days', sites: within30, fill: 'hsl(0, 84%, 60%)' },
+      { period: '31-60 Days', sites: within60, fill: 'hsl(25, 95%, 53%)' },
+      { period: '61-90 Days', sites: within90, fill: 'hsl(45, 93%, 47%)' },
+      { period: '90+ Days', sites: beyond90, fill: 'hsl(142, 71%, 45%)' },
+    ]
+
+    const programData = Object.entries(programEndDates)
+      .filter(([_, counts]) => counts.within30 + counts.within60 + counts.within90 + counts.beyond90 > 0)
+      .map(([program, counts]) => ({
+        program,
+        'Within 30 Days': counts.within30,
+        '31-60 Days': counts.within60,
+        '61-90 Days': counts.within90,
+        '90+ Days': counts.beyond90,
+      }))
+
+    const totalExpiring = within30 + within60 + within90
+    const totalAll = within30 + within60 + within90 + beyond90
+
+    return { timelineData, programData, totalExpiring, totalAll, hasAny: totalAll > 0 }
+  }, [data])
 
   useEffect(() => {
     if (siteData && dialogMode === 'edit') {
@@ -633,7 +795,7 @@ export default function SiteManagement() {
 
   const handleExportSites = async () => {
     try {
-      const blob = await exportSiteMutation.mutateAsync()
+      const blob = await exportSiteMutation.mutateAsync(filters)
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -673,7 +835,7 @@ export default function SiteManagement() {
             {importErrorDetails.provided_headers && (
               <div>
                 <p className='text-sm font-medium'>Provided headers:</p>
-                <pre className='whitespace-pre-wrap wrap-break-word rounded-md bg-white/70 p-2 text-xs text-red-900 max-h-40 overflow-auto'>
+                <pre className='whitespace-pre-wrap wrap-break-word rounded-md bg-card/70 p-2 text-xs text-red-900 max-h-40 overflow-auto'>
                   {importErrorDetails.provided_headers.join('\n')}
                 </pre>
               </div>
@@ -681,7 +843,7 @@ export default function SiteManagement() {
             {importErrorDetails.rows && importErrorDetails.rows.length > 0 && (
               <div>
                 <p className='text-sm font-medium'>Problem rows:</p>
-                <pre className='whitespace-pre-wrap wrap-break-word rounded-md bg-white/70 p-2 text-xs text-red-900 max-h-40 overflow-auto'>
+                <pre className='whitespace-pre-wrap wrap-break-word rounded-md bg-card/70 p-2 text-xs text-red-900 max-h-40 overflow-auto'>
                   {importErrorDetails.rows.join('\n')}
                 </pre>
               </div>
@@ -722,7 +884,7 @@ export default function SiteManagement() {
                 <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
                 <Input
                   id='search'
-                  placeholder='Search by site name, community...'
+                  placeholder='Search by site name...'
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className='pl-8'
@@ -738,14 +900,14 @@ export default function SiteManagement() {
           </DialogHeader>
           <div className='space-y-4'>
             <div className='flex flex-col gap-2'>
-              <span className='text-sm text-gray-600'>Need a reference?</span>
+              <span className='text-sm text-muted-foreground'>Need a reference?</span>
               <Button variant='secondary' onClick={handleTemplateDownload} disabled={templateDownloading}>
                 <Download className='h-4 w-4 mr-2' />
                 {templateDownloading ? 'Preparing download...' : 'Download sample CSV'}
               </Button>
             </div>
             <div
-              className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200'}`}
+              className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragActive ? 'border-primary bg-primary/5' : 'border-border'}`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleFileDrop}
@@ -758,14 +920,14 @@ export default function SiteManagement() {
                 onChange={handleImportFileChange}
               />
               <label htmlFor='site-import-file' className='flex flex-col items-center gap-2 cursor-pointer'>
-                <UploadCloud className='h-6 w-6 text-gray-400' />
+                <UploadCloud className='h-6 w-6 text-muted-foreground' />
                 <div>
-                  <p className='text-sm font-medium text-gray-900'>Click to select or drag and drop</p>
-                  <p className='text-xs text-gray-500'>CSV files only • Max 10MB</p>
+                  <p className='text-sm font-medium text-foreground'>Click to select or drag and drop</p>
+                  <p className='text-xs text-muted-foreground'>CSV files only • Max 10MB</p>
                 </div>
               </label>
               {selectedImportFile && (
-                <p className='mt-3 text-sm text-gray-700'>
+                <p className='mt-3 text-sm text-foreground'>
                   Selected file: <span className='font-medium'>{selectedImportFile.name}</span>
                 </p>
               )}
@@ -786,11 +948,11 @@ export default function SiteManagement() {
       </Dialog>
               </div>
             </div>
-            <div className='flex gap-2'>
-              <div>
+            <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4'>
+              <div className='space-y-2'>
                 <Label htmlFor='status'>Status</Label>
                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                  <SelectTrigger className='w-32'>
+                  <SelectTrigger className='w-full'>
                     <SelectValue placeholder='All' />
                   </SelectTrigger>
                   <SelectContent>
@@ -800,10 +962,10 @@ export default function SiteManagement() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className='space-y-2'>
                 <Label htmlFor='siteType'>Site Type</Label>
                 <Select value={siteType || 'all'} onValueChange={(value) => setSiteType(value === 'all' ? '' : value)}>
-                  <SelectTrigger className='w-40'>
+                  <SelectTrigger className='w-full'>
                     <SelectValue placeholder='All' />
                   </SelectTrigger>
                   <SelectContent>
@@ -814,10 +976,10 @@ export default function SiteManagement() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className='space-y-2'>
                 <Label htmlFor='operatorType'>Operator Type</Label>
                 <Select value={operatorType || 'all'} onValueChange={(value) => setOperatorType(value === 'all' ? '' : value)}>
-                  <SelectTrigger className='w-40'>
+                  <SelectTrigger className='w-full'>
                     <SelectValue placeholder='All' />
                   </SelectTrigger>
                   <SelectContent>
@@ -834,10 +996,29 @@ export default function SiteManagement() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className='space-y-2'>
+                <Label htmlFor='community'>Community</Label>
+                <SearchableSelect
+                  value={communityId}
+                  onValueChange={(value) => {
+                    setCommunityId(value)
+                    setCommunitySearch('')
+                  }}
+                  placeholder='All'
+                  searchPlaceholder='Search community...'
+                  triggerClassName='w-full'
+                  contentClassName='w-[min(100vw-2rem,28rem)]'
+                  onSearchChange={setCommunitySearch}
+                  hasNextPage={hasNextCommunityPage}
+                  isFetchingNextPage={isFetchingNextCommunityPage}
+                  onFetchNextPage={() => fetchNextCommunityPage()}
+                  options={communitySelectOptions}
+                />
+              </div>
+              <div className='space-y-2'>
                 <Label htmlFor='year'>Census Year</Label>
                 <Select value={year?.toString() || ''} onValueChange={(value) => setYear(value ? parseInt(value) : undefined)}>
-                  <SelectTrigger className='w-32'>
+                  <SelectTrigger className='w-full'>
                     <SelectValue placeholder='Select year' />
                   </SelectTrigger>
                   <SelectContent>
@@ -881,10 +1062,10 @@ export default function SiteManagement() {
         {/* <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>Scheduled</CardTitle>
-            <Calendar className='h-4 w-4 text-blue-600' />
+            <Calendar className='h-4 w-4 text-primary' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold text-blue-600'>{scheduledSites}</div>
+            <div className='text-2xl font-bold text-primary'>{scheduledSites}</div>
             <p className='text-xs text-muted-foreground'>Future activation</p>
           </CardContent>
         </Card> */}
@@ -892,10 +1073,10 @@ export default function SiteManagement() {
         <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>Inactive</CardTitle>
-            <X className='h-4 w-4 text-gray-600' />
+            <X className='h-4 w-4 text-muted-foreground' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold text-gray-600'>{inactiveSites}</div>
+            <div className='text-2xl font-bold text-muted-foreground'>{inactiveSites}</div>
             <p className='text-xs text-muted-foreground'>Deactivated sites</p>
           </CardContent>
         </Card>
@@ -952,6 +1133,14 @@ export default function SiteManagement() {
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <Button
+                size='sm'
+                variant='destructive'
+                disabled={selectedIds.length === 0 || bulkDeleting}
+                onClick={() => setIsBulkDeleteDialogOpen(true)}
+              >
+                {bulkDeleting ? 'Deleting…' : `Delete Selected (${selectedIds.length})`}
+              </Button>
               <Button size='sm' onClick={handleAddSite}>
                 <Plus className='w-4 h-4 mr-2' />
                 Add Site
@@ -959,6 +1148,26 @@ export default function SiteManagement() {
             </div>
           </div>
         </CardHeader>
+        {/* Bulk Delete Confirmation Dialog */}
+        <Dialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete selected sites</DialogTitle>
+              <DialogDescription>
+                This action cannot be undone. You are about to delete {selectedIds.length} site{selectedIds.length === 1 ? '' : 's'}. Do you want to proceed?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsBulkDeleteDialogOpen(false)} disabled={bulkDeleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={async () => { await handleBulkDelete(); setIsBulkDeleteDialogOpen(false) }} disabled={bulkDeleting || selectedIds.length === 0}>
+                {bulkDeleting ? 'Deleting…' : 'Delete'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <CardContent>
           {isLoading ? (
             <div className='text-center py-8'>
@@ -981,7 +1190,11 @@ export default function SiteManagement() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className='w-12'>
-                          <Checkbox />
+                          <Checkbox
+                            checked={allVisibleSelected}
+                            onCheckedChange={(val: any) => toggleSelectAllVisible(Boolean(val))}
+                            aria-checked={allVisibleSelected ? 'true' : someVisibleSelected ? 'mixed' : 'false'}
+                          />
                         </TableHead>
                         <TableHead>
                           <Button variant="ghost" size="sm" onClick={() => handleSort('site')} className="h-auto p-0 font-semibold" disabled={isLoading}>
@@ -1065,7 +1278,10 @@ export default function SiteManagement() {
                       {data?.results.map((site) => (
                         <TableRow key={site.id}>
                           <TableCell>
-                            <Checkbox />
+                            <Checkbox
+                              checked={selectedIds.includes(site.id)}
+                              onCheckedChange={(val: any) => toggleSelectOne(site.id, Boolean(val))}
+                            />
                           </TableCell>
                           <TableCell>
                             <div className='font-medium'>{site.site_name}</div>
@@ -1105,7 +1321,7 @@ export default function SiteManagement() {
                       ))}
                       {data?.results.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={11} className='text-center py-8 text-gray-500'>
+                          <TableCell colSpan={11} className='text-center py-8 text-muted-foreground'>
                             <div className='text-lg font-medium mb-2'>No sites found</div>
                             <p className='text-sm'>
                               Add a new site to get started or import data from CSV
@@ -1127,7 +1343,7 @@ export default function SiteManagement() {
                 hasNext={hasNext}
                 hasPrev={hasPrev}
                 label="sites"
-                pageSizeOptions={[10, 20, 50, 100]}
+                pageSizeOptions={[5,10, 20, 50, 100]}
                 onPageSizeChange={(size) => {
                   setLimit(size)
                   setPage(1)
@@ -1160,7 +1376,7 @@ export default function SiteManagement() {
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
               Cancel
             </Button>
-            <Button variant="outline" className='bg-black text-white hover:bg-black/70 hover:text-white' onClick={confirmDeleteSite} disabled={deleteMutation.isPending}>
+            <Button variant="destructive" onClick={confirmDeleteSite} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>

@@ -1,7 +1,8 @@
 // Auth utilities - Frontend-only authentication
 
 export interface LoginCredentials {
-  email: string
+  email?: string
+  username?: string
   password: string
 }
 
@@ -19,26 +20,23 @@ export interface LoginResponse {
 }
 
 export async function login(credentials: LoginCredentials): Promise<User> {
-  // Frontend-only authentication with dummy credentials
-  if (credentials.email === 'admin' && credentials.password === 'admin123') {
-    const mockUser: User = {
-      id: 1,
-      email: 'admin',
-      first_name: 'Admin',
-      last_name: 'User',
-    }
-
-    // Store mock tokens in localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', 'mock_access_token')
-      localStorage.setItem('refresh_token', 'mock_refresh_token')
-      localStorage.setItem('user', JSON.stringify(mockUser))
-    }
-
-    return mockUser
+  const { login: apiLogin, getProfile } = await import('./axios-instance')
+  const username = credentials.username ?? credentials.email ?? ''
+  if (!username || !credentials.password) {
+    throw new Error('Invalid username or password')
   }
-
-  throw new Error('Invalid username or password')
+  await apiLogin(username, credentials.password)
+  const profile = await getProfile()
+  const user: User = {
+    id: Number(profile?.id ?? 0),
+    email: String(profile?.email ?? username),
+    first_name: String(profile?.first_name ?? ''),
+    last_name: String(profile?.last_name ?? ''),
+  }
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('user', JSON.stringify(user))
+  }
+  return user
 }
 
 export async function logout(): Promise<void> {

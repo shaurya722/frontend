@@ -36,15 +36,11 @@ export const useDashboardStats = (year?: number) => {
   const { data: mapData, isLoading: mapLoading } = useQuery({
     queryKey: ['dashboardMapData', year],
     queryFn: async () => {
-      const apiUrl = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/community/map-data/`)
-      if (year) {
-        apiUrl.searchParams.set('census_year', year.toString())
-      }
-      const response = await fetch(apiUrl.toString())
-      if (!response.ok) {
-        throw new Error('Failed to fetch map data')
-      }
-      return response.json()
+      const { default: axiosInstance } = await import('@/lib/axios-instance')
+      const res = await axiosInstance.get('/api/community/map-data/', {
+        params: year ? { census_year: year } : undefined,
+      })
+      return res.data
     },
   })
 

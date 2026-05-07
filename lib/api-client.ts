@@ -26,3 +26,34 @@ export interface ApiError {
   status?: number
   errors?: Record<string, string[]>
 }
+
+import axiosInstance from './axios-instance'
+
+export async function apiGet<T>(url: string, params?: any): Promise<T> {
+  const res = await axiosInstance.get<T>(url, { params })
+  return res.data as unknown as T
+}
+
+export async function apiPost<T>(url: string, data?: any): Promise<T> {
+  const res = await axiosInstance.post<T>(url, data)
+  return res.data as unknown as T
+}
+
+export async function apiPut<T>(url: string, data?: any): Promise<T> {
+  const res = await axiosInstance.put<T>(url, data)
+  return res.data as unknown as T
+}
+
+export async function apiDelete<T>(url: string): Promise<T> {
+  const res = await axiosInstance.delete<T>(url)
+  return res.data as unknown as T
+}
+
+export async function apiRequest<T>(
+  method: 'get' | 'post' | 'put' | 'delete' | 'patch',
+  url: string,
+  options: { data?: any; params?: any } = {},
+): Promise<T> {
+  const res = await axiosInstance.request<T>({ method, url, ...options })
+  return res.data as unknown as T
+}

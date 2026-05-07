@@ -11,6 +11,156 @@ function escapeHtml(s: string) {
     .replace(/"/g, '&quot;')
 }
 
+type LngLat = [number, number]
+type Ring = LngLat[]
+
+/**
+ * Drop coords that are missing, non-finite, or wrong shape. A valid ring needs
+ * at least 3 points; otherwise Leaflet-Draw can't build edit handles and
+ * crashes inside `Object.project` with "Cannot read properties of null".
+ */
+function sanitizeRing(raw: unknown): Ring | null {
+  if (!Array.isArray(raw)) return null
+  const out: Ring = []
+  for (const c of raw) {
+    if (!Array.isArray(c) || c.length < 2) continue
+    const lng = Number(c[0])
+    const lat = Number(c[1])
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    out.push([lng, lat])
+  }
+  return out.length >= 3 ? out : null
+}
+
+/**
+ * Normalise a `Polygon` or `MultiPolygon` into a list of polygons, where each
+ * polygon is `[outerRing, ...holeRings]`. Used to materialize MultiPolygons as
+ * separate `L.Polygon` layers so Leaflet-Draw can edit every sub-polygon.
+ */
+function geometryToPolygonRings(geom: any): Ring[][] {
+  if (!geom) return []
+  if (geom.type === 'Polygon') {
+    const rings = (geom.coordinates || [])
+      .map(sanitizeRing)
+      .filter(Boolean) as Ring[]
+    return rings.length ? [rings] : []
+  }
+  if (geom.type === 'MultiPolygon') {
+    const out: Ring[][] = []
+    for (const poly of geom.coordinates || []) {
+      const rings = ((poly as unknown[]) || [])
+        .map(sanitizeRing)
+        .filter(Boolean) as Ring[]
+      if (rings.length) out.push(rings)
+    }
+    return out
+  }
+  return []
+}
+
+/**
+ * Leaflet-Draw 1.0.4 builds "middle" markers between vertices via
+ * `_getMiddleLatLng` → `map.project(marker.getLatLng())`. If any vertex is
+ * missing/null (bad GeoJSON, corrupted ring, or geoJSON restore), `project`
+ * throws `Cannot read properties of null (reading 'lat')`. Patch once per load.
+ */
+function patchLeafletDrawPolyVertexEdit(L: any) {
+  const PVE = L?.Edit?.PolyVerticesEdit
+  if (!PVE?.prototype?._getMiddleLatLng) return
+  if ((PVE.prototype as any).__arcGisPolyVertexPatched) return
+  ;(PVE.prototype as any).__arcGisPolyVertexPatched = true
+
+  const isFlat =
+    typeof L.Polyline?._flat === 'function'
+      ? L.Polyline._flat.bind(L.Polyline)
+      : typeof L.LineUtil?.isFlat === 'function'
+        ? L.LineUtil.isFlat.bind(L.LineUtil)
+        : null
+
+  const sanitizeFlatRingInPlace = (ring: any[]) => {
+    if (!Array.isArray(ring) || !isFlat || !isFlat(ring)) return
+    for (let i = ring.length - 1; i >= 0; i--) {
+      const ll = ring[i]
+      if (
+        !ll ||
+        typeof ll.lat !== 'number' ||
+        typeof ll.lng !== 'number' ||
+        !Number.isFinite(ll.lat) ||
+        !Number.isFinite(ll.lng)
+      ) {
+        ring.splice(i, 1)
+      }
+    }
+  }
+
+  const origGetMiddle = PVE.prototype._getMiddleLatLng
+  PVE.prototype._getMiddleLatLng = function (marker1: any, marker2: any) {
+    if (!marker1 || !marker2) {
+      return L.latLng(0, 0)
+    }
+    let a: any
+    let b: any
+    try {
+      a = typeof marker1.getLatLng === 'function' ? marker1.getLatLng() : null
+      b = typeof marker2.getLatLng === 'function' ? marker2.getLatLng() : null
+    } catch {
+      return L.latLng(0, 0)
+    }
+    if (
+      !a ||
+      !b ||
+      !Number.isFinite(a.lat) ||
+      !Number.isFinite(a.lng) ||
+      !Number.isFinite(b.lat) ||
+      !Number.isFinite(b.lng)
+    ) {
+      return L.latLng(
+        ((Number(a?.lat) || 0) + (Number(b?.lat) || 0)) / 2,
+        ((Number(a?.lng) || 0) + (Number(b?.lng) || 0)) / 2,
+      )
+    }
+    try {
+      return origGetMiddle.call(this, marker1, marker2)
+    } catch {
+      return L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2)
+    }
+  }
+
+  const origCreateMiddle = PVE.prototype._createMiddleMarker
+  PVE.prototype._createMiddleMarker = function (marker1: any, marker2: any) {
+    if (!marker1 || !marker2) return
+    let a: any
+    let b: any
+    try {
+      a = marker1.getLatLng?.()
+      b = marker2.getLatLng?.()
+    } catch {
+      return
+    }
+    if (
+      !a ||
+      !b ||
+      !Number.isFinite(a.lat) ||
+      !Number.isFinite(a.lng) ||
+      !Number.isFinite(b.lat) ||
+      !Number.isFinite(b.lng)
+    ) {
+      return
+    }
+    return origCreateMiddle.call(this, marker1, marker2)
+  }
+
+  const origInitMarkers = PVE.prototype._initMarkers
+  PVE.prototype._initMarkers = function () {
+    try {
+      sanitizeFlatRingInPlace(this._latlngs)
+    } catch {
+      /* ignore */
+    }
+    return origInitMarkers.call(this)
+  }
+}
+
 interface CollectionSite {
   id: string
   name: string
@@ -32,6 +182,8 @@ interface Municipality {
   name: string
   tier: string
   population: number
+  boundary?: any
+  adjacent_ids?: string[]
 }
 
 interface MapFilters {
@@ -73,6 +225,8 @@ interface LeafletMapProps {
   onPolygonEdited?: (id: string, geometry: any) => void
   /** Increment to clear any unsaved client-drawn polygon from the map */
   unsavedPolygonClearedAt?: number
+  /** If provided, focuses/zooms to a community whose name includes this term */
+  focusCommunityName?: string
 }
 
 export default function LeafletMap({
@@ -87,14 +241,18 @@ export default function LeafletMap({
   onMapCommunityClick,
   onPolygonEdited,
   unsavedPolygonClearedAt,
+  focusCommunityName,
 }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const communityLayersRef = useRef<any[]>([])
+  const municipalityLayersRef = useRef<any[]>([])
   const drawnItemsRef = useRef<any>(null)
   const drawControlRef = useRef<any>(null)
   const clientDrawnLayersRef = useRef<any[]>([])
+  /** Map<featureId, L.Polygon[]> — used to re-aggregate decomposed MultiPolygons on edit */
+  const polygonsByFeatureIdRef = useRef<Map<string, any[]>>(new Map())
   const [leafletReady, setLeafletReady] = useState(false)
 
   useEffect(() => {
@@ -105,9 +263,18 @@ export default function LeafletMap({
     const initMap = async () => {
       const L = (await import('leaflet')).default
       
-      // Dynamically import Leaflet Draw plugin
+      // Dynamically import Leaflet Draw plugin (extends L)
       await import('leaflet-draw')
-
+      patchLeafletDrawPolyVertexEdit(L)
+      // Compatibility shim for plugins expecting LineUtil._flat
+      try {
+        const LU: any = (L as any).LineUtil
+        if (LU && !LU._flat && typeof LU.isFlat === 'function') {
+          LU._flat = LU.isFlat
+        }
+      } catch {
+        /* ignore */
+      }
       // Load Leaflet CSS
       if (!document.querySelector('link[href*="leaflet.css"]')) {
         const link = document.createElement('link')
@@ -122,6 +289,17 @@ export default function LeafletMap({
         drawLink.rel = 'stylesheet'
         drawLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css'
         document.head.appendChild(drawLink)
+      }
+
+      // Defensive: hide the delete (trash) tool from the edit toolbar even if a
+      // future build re-enables it; keeps Edit visible while removing Delete.
+      if (!document.getElementById('leaflet-draw-no-delete-style')) {
+        const style = document.createElement('style')
+        style.id = 'leaflet-draw-no-delete-style'
+        style.textContent = `
+          .leaflet-draw-edit-remove { display: none !important; }
+        `
+        document.head.appendChild(style)
       }
 
       // Fix for default marker icons
@@ -156,7 +334,7 @@ export default function LeafletMap({
       map.addLayer(drawnItems)
       drawnItemsRef.current = drawnItems
 
-      // Add the draw control
+      // Add the draw control (delete icon intentionally disabled)
       const drawControl = new (L.Control as any).Draw({
         position: 'topright',
         draw: {
@@ -183,7 +361,7 @@ export default function LeafletMap({
         },
         edit: {
           featureGroup: drawnItems,
-          remove: true,
+          remove: false,
           edit: true,
         },
       })
@@ -197,167 +375,59 @@ export default function LeafletMap({
           : null
         if (saved) {
           const savedGeom = JSON.parse(saved)
-          const restored = L.geoJSON({ type: 'Feature', geometry: savedGeom } as any, {
-            style: {
-              color: '#3b82f6',
-              weight: 3,
-              opacity: 0.8,
-              fill: true,
-              fillColor: '#3b82f6',
-              fillOpacity: 0.2,
-            },
-          })
-          restored.eachLayer((layer: any) => {
-            drawnItems.addLayer(layer)
-            clientDrawnLayersRef.current.push(layer)
-          })
-          // Fit bounds to restored polygon
-          try {
-            const bounds = restored.getBounds?.()
-            if (bounds) map.fitBounds(bounds.pad(0.1))
-          } catch {}
-          // Notify parent
-          if (onPolygonCreate && savedGeom) {
-            onPolygonCreate(savedGeom)
+          const ringSets = geometryToPolygonRings(savedGeom)
+          if (ringSets.length) {
+            for (const rings of ringSets) {
+              const latlngs = rings.map((r) => r.map(([lng, lat]) => L.latLng(lat, lng)))
+              const restored = L.polygon(latlngs, {
+                color: '#3b82f6',
+                weight: 3,
+                opacity: 0.8,
+                fill: true,
+                fillColor: '#3b82f6',
+                fillOpacity: 0.2,
+              })
+              drawnItems.addLayer(restored)
+              clientDrawnLayersRef.current.push(restored)
+            }
+            try {
+              const group = L.featureGroup(clientDrawnLayersRef.current)
+              const bounds = group.getBounds?.()
+              if (bounds && bounds.isValid && bounds.isValid()) {
+                map.fitBounds(bounds.pad(0.1))
+              }
+            } catch (e) {
+              console.warn('[Leaflet] Failed to fit bounds to restored polygon:', e)
+            }
+            if (onPolygonCreate && savedGeom) {
+              onPolygonCreate(savedGeom)
+            }
+            console.log('Restored polygon from localStorage')
+          } else {
+            try {
+              window.localStorage.removeItem('drawnPolygon')
+            } catch {
+              /* ignore */
+            }
           }
-          console.log('Restored polygon from localStorage')
         }
       } catch (e) {
         console.warn('Failed to restore saved polygon', e)
       }
 
-      // Handle polygon creation with overlap prevention
+      // Handle polygon creation (overlapping areas are allowed)
       map.on((window as any).L.Draw.Event.CREATED, async function (event: any) {
         const layer = event.layer
         const geoJSON = layer.toGeoJSON()
 
-        console.log('Polygon created (candidate):', geoJSON)
+        console.log('Polygon created:', geoJSON)
 
-        // Helper: fast bounds overlap check
-        const boundsOverlap = (a: any, b: any) => {
-          try {
-            const ab = a.getBounds?.()
-            const bb = b.getBounds?.()
-            return ab && bb ? ab.intersects(bb) : true
-          } catch {
-            return true
-          }
-        }
-
-        // Helpers: basic geometry intersection (Polygon/MultiPolygon) without external deps
-        type LngLat = [number, number]
-        const toRings = (geom: any): LngLat[][] => {
-          if (!geom) return []
-          if (geom.type === 'Polygon') return geom.coordinates as LngLat[][]
-          if (geom.type === 'MultiPolygon') {
-            const out: LngLat[][] = []
-            for (const poly of geom.coordinates as LngLat[][][]) out.push(...poly)
-            return out
-          }
-          return []
-        }
-        const pointInRing = (pt: LngLat, ring: LngLat[]): boolean => {
-          // Ray casting in lon/lat space (good enough for small regions)
-          let inside = false
-          for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = ring[i][0], yi = ring[i][1]
-            const xj = ring[j][0], yj = ring[j][1]
-            const intersect = ((yi > pt[1]) !== (yj > pt[1])) && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-12) + xi)
-            if (intersect) inside = !inside
-          }
-          return inside
-        }
-        const onSegment = (a: LngLat, b: LngLat, p: LngLat): boolean => {
-          const cross = (p[1]-a[1])*(b[0]-a[0]) - (p[0]-a[0])*(b[1]-a[1])
-          if (Math.abs(cross) > 1e-12) return false
-          const dot = (p[0]-a[0])*(b[0]-a[0]) + (p[1]-a[1])*(b[1]-a[1])
-          if (dot < 0) return false
-          const sqLen = (b[0]-a[0])**2 + (b[1]-a[1])**2
-          return dot <= sqLen
-        }
-        const segsIntersect = (p1: LngLat, p2: LngLat, q1: LngLat, q2: LngLat): boolean => {
-          const orient = (a: LngLat, b: LngLat, c: LngLat) => Math.sign((b[1]-a[1])*(c[0]-b[0]) - (b[0]-a[0])*(c[1]-b[1]))
-          const o1 = orient(p1, p2, q1)
-          const o2 = orient(p1, p2, q2)
-          const o3 = orient(q1, q2, p1)
-          const o4 = orient(q1, q2, p2)
-          if (o1 !== o2 && o3 !== o4) return true
-          if (o1 === 0 && onSegment(p1, p2, q1)) return true
-          if (o2 === 0 && onSegment(p1, p2, q2)) return true
-          if (o3 === 0 && onSegment(q1, q2, p1)) return true
-          if (o4 === 0 && onSegment(q1, q2, p2)) return true
-          return false
-        }
-        const ringsIntersect = (r1: LngLat[], r2: LngLat[]): boolean => {
-          // Edge intersections
-          for (let i = 0; i < r1.length - 1; i++) {
-            for (let j = 0; j < r2.length - 1; j++) {
-              if (segsIntersect(r1[i], r1[i+1], r2[j], r2[j+1])) return true
-            }
-          }
-          // Containment: any vertex of one inside the other
-          if (pointInRing(r1[0], r2)) return true
-          if (pointInRing(r2[0], r1)) return true
-          return false
-        }
-        const geometriesIntersect = (geomA: any, geomB: any): boolean => {
-          const ringsA = toRings(geomA)
-          const ringsB = toRings(geomB)
-          for (const ra of ringsA) {
-            for (const rb of ringsB) {
-              if (ringsIntersect(ra, rb)) return true
-            }
-          }
-          return false
-        }
-
-        // Collect existing layers: user-drawn and server-rendered communities
-        const existingLayers: any[] = []
-        try {
-          const drawnLayers = drawnItemsRef.current?.getLayers?.() ?? []
-          existingLayers.push(...drawnLayers)
-        } catch {}
-        try {
-          existingLayers.push(...communityLayersRef.current)
-        } catch {}
-
-        // Check overlap against all existing layers
-        for (const existing of existingLayers) {
-          try {
-            // Quick reject with bounds
-            if (!boundsOverlap(layer, existing)) continue
-
-            const existingGj = existing.toGeoJSON?.()
-            const existingGeom = existingGj?.geometry
-            if (!existingGeom) continue
-
-            const intersects = geometriesIntersect(geoJSON.geometry, existingGeom)
-            if (intersects) {
-              // Prevent adding overlapping polygon
-              try { layer.remove?.() } catch {}
-              try {
-                // Provide feedback to user
-                alert('Cannot add polygon: it overlaps an existing area.')
-              } catch {}
-              return
-            }
-          } catch {
-            // On any unexpected error, be conservative and block
-            try { layer.remove?.() } catch {}
-            try { alert('Cannot add polygon due to an internal validation error.') } catch {}
-            return
-          }
-        }
-
-        // Passed overlap checks — add the drawn polygon to the map
         drawnItems.addLayer(layer)
         clientDrawnLayersRef.current.push(layer)
 
-        // Call the callback with the GeoJSON geometry
         if (onPolygonCreate) {
           onPolygonCreate(geoJSON.geometry)
         }
-        // Persist to localStorage
         try {
           if (typeof window !== 'undefined') {
             window.localStorage.setItem('drawnPolygon', JSON.stringify(geoJSON.geometry))
@@ -384,27 +454,101 @@ export default function LeafletMap({
         }
       })
 
-      // Handle polygon edit - update saved geometry and notify parent (for server polygons)
+      // Defensive guard: before the edit toolbar opens its handles, remove any
+      // layer whose latlngs are malformed. Leaflet-Draw's `Edit.Poly` calls
+      // `latLngToLayerPoint(latlng)` on every vertex; a single `null` entry
+      // crashes the entire edit session with "Cannot read properties of null
+      // (reading 'lat')" inside `Object.project`.
+      const isValidLatLngTree = (node: any): boolean => {
+        if (!node) return false
+        if (Array.isArray(node)) {
+          if (node.length === 0) return false
+          return node.every(isValidLatLngTree)
+        }
+        return (
+          typeof node.lat === 'number' &&
+          typeof node.lng === 'number' &&
+          Number.isFinite(node.lat) &&
+          Number.isFinite(node.lng)
+        )
+      }
+      map.on((window as any).L.Draw.Event.EDITSTART, function () {
+        try {
+          const broken: any[] = []
+          drawnItems.eachLayer((layer: any) => {
+            const latlngs = layer?.getLatLngs?.()
+            if (latlngs === undefined) return
+            if (!isValidLatLngTree(latlngs)) {
+              broken.push(layer)
+            }
+          })
+          for (const layer of broken) {
+            console.warn('[Leaflet] Removing polygon with invalid coordinates from edit set', layer)
+            try { drawnItems.removeLayer(layer) } catch { /* ignore */ }
+          }
+        } catch (e) {
+          console.warn('[Leaflet] EDITSTART guard failed', e)
+        }
+      })
+
+      // Handle polygon edit. Decomposed MultiPolygons are emitted as multiple
+      // L.Polygon layers; aggregate them back into a single MultiPolygon (or
+      // Polygon if only one part) before notifying the parent so the saved
+      // shape matches the original feature.
       map.on((window as any).L.Draw.Event.EDITED, function (event: any) {
         const layers = event.layers
+        const editedFeatureIds = new Set<string>()
+        const clientLayersEdited: any[] = []
         try {
           layers.eachLayer(function (layer: any) {
-            const edited = layer.toGeoJSON()?.geometry
-            if (!edited) return
-            // If this layer has an id in its feature properties, treat it as a server polygon and notify parent
             const id = layer?.feature?.properties?.id as string | undefined
-            if (id && onPolygonEdited) {
-              onPolygonEdited(id, edited)
-              return
-            }
-            // Fallback: persist client-drawn polygon
-            if (typeof window !== 'undefined') {
-              window.localStorage.setItem('drawnPolygon', JSON.stringify(edited))
-              if (onPolygonCreate) onPolygonCreate(edited)
+            if (id) {
+              editedFeatureIds.add(id)
+            } else {
+              clientLayersEdited.push(layer)
             }
           })
         } catch (e) {
-          console.warn('Failed to save edited polygon', e)
+          console.warn('Failed to enumerate edited layers', e)
+        }
+
+        editedFeatureIds.forEach((id) => {
+          const parts = polygonsByFeatureIdRef.current.get(id) ?? []
+          if (!parts.length || !onPolygonEdited) return
+          const polyCoords: any[] = []
+          for (const part of parts) {
+            try {
+              const g = part.toGeoJSON()?.geometry
+              if (g?.type === 'Polygon' && Array.isArray(g.coordinates) && g.coordinates.length) {
+                polyCoords.push(g.coordinates)
+              }
+            } catch {
+              /* skip broken part */
+            }
+          }
+          if (!polyCoords.length) return
+          const merged =
+            polyCoords.length === 1
+              ? { type: 'Polygon', coordinates: polyCoords[0] }
+              : { type: 'MultiPolygon', coordinates: polyCoords }
+          try {
+            onPolygonEdited(id, merged)
+          } catch (e) {
+            console.warn('onPolygonEdited handler threw', e)
+          }
+        })
+
+        for (const layer of clientLayersEdited) {
+          try {
+            const edited = layer.toGeoJSON()?.geometry
+            if (!edited) continue
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem('drawnPolygon', JSON.stringify(edited))
+            }
+            if (onPolygonCreate) onPolygonCreate(edited)
+          } catch (e) {
+            console.warn('Failed to save edited client polygon', e)
+          }
         }
       })
 
@@ -434,8 +578,25 @@ export default function LeafletMap({
         }
       })
       communityLayersRef.current = []
+      municipalityLayersRef.current = []
+      polygonsByFeatureIdRef.current.clear()
+      
+      // Properly cleanup draw control before removing map
+      if (drawControlRef.current && mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.removeControl(drawControlRef.current)
+          drawControlRef.current = null
+        } catch (e) {
+          console.warn('[Leaflet] Failed to remove draw control:', e)
+        }
+      }
+      
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove()
+        try {
+          mapInstanceRef.current.remove()
+        } catch (e) {
+          console.warn('[Leaflet] Failed to remove map:', e)
+        }
         mapInstanceRef.current = null
       }
     }
@@ -443,13 +604,14 @@ export default function LeafletMap({
 
   useEffect(() => {
     if (!leafletReady || !mapInstanceRef.current || !showMapCommunities) {
-      if (mapInstanceRef.current && !showMapCommunities) {
+      const drawnItems = drawnItemsRef.current
+      const map = mapInstanceRef.current
+      if (!showMapCommunities) {
         communityLayersRef.current.forEach((layer) => {
-          try {
-            mapInstanceRef.current?.removeLayer(layer)
-          } catch {
-            /* ignore */
-          }
+          try { drawnItems?.removeLayer?.(layer) } catch { /* ignore */ }
+          try { map?.removeLayer?.(layer) } catch { /* ignore */ }
+          const id = layer?.feature?.properties?.id as string | undefined
+          if (id) polygonsByFeatureIdRef.current.delete(id)
         })
         communityLayersRef.current = []
       }
@@ -462,55 +624,75 @@ export default function LeafletMap({
       const L = (await import('leaflet')).default
       if (cancelled) return
       const map = mapInstanceRef.current
-      if (!map || cancelled) return
+      const drawnItems = drawnItemsRef.current
+      if (!map || !drawnItems || cancelled) return
 
+      // Clear previously rendered community polygons
       communityLayersRef.current.forEach((layer) => {
-        try {
-          map.removeLayer(layer)
-        } catch {
-          /* ignore */
-        }
+        try { drawnItems.removeLayer(layer) } catch { /* ignore */ }
+        try { map.removeLayer(layer) } catch { /* ignore */ }
+        const id = layer?.feature?.properties?.id as string | undefined
+        if (id) polygonsByFeatureIdRef.current.delete(id)
       })
       communityLayersRef.current = []
 
       for (const c of mapCommunities) {
-        if (
-          !c?.boundary ||
-          (c.boundary.type !== 'Polygon' && c.boundary.type !== 'MultiPolygon')
-        )
-          continue
-        const gj = L.geoJSON(
-          {
+        const ringSets = geometryToPolygonRings(c?.boundary)
+        if (!ringSets.length) continue
+
+        const adjCount = c.adjacent_ids?.length ?? 0
+        const popupHtml = `<div style="min-width:180px">
+            <strong>${escapeHtml(c.name)}</strong><br/>
+            <span style="font-size:12px;color:#666">${adjCount} adjacent communit${adjCount === 1 ? 'y' : 'ies'}</span>
+            ${onMapCommunityClick ? `<br/><button class="edit-community-btn" style="margin-top:8px;color:#059669;cursor:pointer;font-size:12px;">Click to Edit</button>` : ''}
+          </div>`
+
+        const partsForFeature: any[] = []
+
+        for (const rings of ringSets) {
+          // L.polygon expects [outerLatLngs, ...holeLatLngs] in [lat, lng] order.
+          const latlngs = rings.map((r) => r.map(([lng, lat]) => L.latLng(lat, lng)))
+          const polygon = L.polygon(latlngs, {
+            color: '#059669',
+            weight: 2,
+            opacity: 0.9,
+            fillColor: '#10b981',
+            fillOpacity: 0.15,
+          })
+
+          // Tag with feature info so EDITED can route to the right server entity.
+          ;(polygon as any).feature = {
             type: 'Feature',
             geometry: c.boundary,
             properties: { id: c.id, name: c.name },
-          } as GeoJSON.GeoJsonObject,
-          {
-            style: {
-              color: '#059669',
-              weight: 2,
-              opacity: 0.9,
-              fillColor: '#10b981',
-              fillOpacity: 0.15,
-            },
-          },
-        )
-        gj.bindPopup(
-          `<div style="min-width:180px"><strong>${escapeHtml(c.name)}</strong><br/><span style="font-size:12px;color:#666">${c.adjacent_ids?.length ?? 0} adjacent communit${(c.adjacent_ids?.length ?? 0) === 1 ? 'y' : 'ies'}</span>${onMapCommunityClick ? `<br/><span style="font-size:11px;color:#059669">Click to edit or delete</span>` : ''}</div>`,
-        )
-        if (onMapCommunityClick) {
-          gj.on('click', () => {
-            onMapCommunityClick(c)
-          })
+          }
+
+          polygon.bindPopup(popupHtml)
+          if (onMapCommunityClick) {
+            polygon.on('popupopen', (e: any) => {
+              const container = e?.popup?.getElement?.()
+              if (!container) return
+              const btn = container.querySelector('.edit-community-btn')
+              if (!btn) return
+              const handler = (ev: Event) => {
+                ev.stopPropagation()
+                onMapCommunityClick(c)
+              }
+              btn.addEventListener('click', handler)
+              polygon.once('popupclose', () => {
+                try { btn.removeEventListener('click', handler) } catch { /* ignore */ }
+              })
+            })
+          }
+
+          drawnItems.addLayer(polygon)
+          communityLayersRef.current.push(polygon)
+          partsForFeature.push(polygon)
         }
-        // Add to map and also to drawnItems so the edit toolbar can edit server polygons
-        gj.addTo(map)
-        try {
-          gj.eachLayer?.((layer: any) => {
-            drawnItemsRef.current?.addLayer?.(layer)
-          })
-        } catch {}
-        communityLayersRef.current.push(gj)
+
+        if (partsForFeature.length) {
+          polygonsByFeatureIdRef.current.set(String(c.id), partsForFeature)
+        }
       }
     }
 
@@ -519,18 +701,148 @@ export default function LeafletMap({
     return () => {
       cancelled = true
       const map = mapInstanceRef.current
-      if (map) {
-        communityLayersRef.current.forEach((layer) => {
-          try {
-            map.removeLayer(layer)
-          } catch {
-            /* ignore */
-          }
-        })
-        communityLayersRef.current = []
-      }
+      const drawnItems = drawnItemsRef.current
+      communityLayersRef.current.forEach((layer) => {
+        try { drawnItems?.removeLayer?.(layer) } catch { /* ignore */ }
+        try { map?.removeLayer?.(layer) } catch { /* ignore */ }
+        const id = layer?.feature?.properties?.id as string | undefined
+        if (id) polygonsByFeatureIdRef.current.delete(id)
+      })
+      communityLayersRef.current = []
     }
   }, [leafletReady, mapCommunities, showMapCommunities, onMapCommunityClick])
+
+  // Draw municipality boundaries from API response (municipalities prop)
+  useEffect(() => {
+    if (!leafletReady || !mapInstanceRef.current) return
+    let cancelled = false
+    const drawMunicipalities = async () => {
+      const L = (await import('leaflet')).default
+      if (cancelled) return
+      const map = mapInstanceRef.current
+      const drawnItems = drawnItemsRef.current
+      if (!map || !drawnItems) return
+
+      // Clear previous municipality polygons (only live inside drawnItems)
+      municipalityLayersRef.current.forEach((layer) => {
+        try { drawnItems.removeLayer(layer) } catch { /* ignore */ }
+        try { map.removeLayer(layer) } catch { /* ignore */ }
+        const id = layer?.feature?.properties?.id as string | undefined
+        if (id) polygonsByFeatureIdRef.current.delete(id)
+      })
+      municipalityLayersRef.current = []
+
+      // Build lookup of adjacent counts from mapCommunities (green layer) by name
+      const adjByName = new Map<string, number>()
+      for (const c of mapCommunities) {
+        const count = c.adjacent_ids?.length ?? 0
+        if (count > 0) adjByName.set(c.name.trim().toLowerCase(), count)
+      }
+
+      for (const m of municipalities || []) {
+        const geom = (m as any)?.boundary
+        const ringSets = geometryToPolygonRings(geom)
+        if (!ringSets.length) continue
+
+        const adjCount = m.adjacent_ids?.length ?? adjByName.get(m.name.trim().toLowerCase()) ?? 0
+        const suffix = adjCount === 1 ? 'y' : 'ies'
+        const popupHtml = `<div style="min-width:180px">
+            <strong>${escapeHtml(m.name)}</strong><br/>
+            <span style="font-size:12px;color:#666">${adjCount} adjacent communit${suffix}</span>
+            ${onMapCommunityClick ? `<br /><button class="edit-community-btn" style="margin-top:8px;color:#059669;cursor:pointer;font-size:12px;">Click to Edit</button>` : ''}
+          </div>`
+
+        const partsForFeature: any[] = []
+
+        for (const rings of ringSets) {
+          const latlngs = rings.map((r) => r.map(([lng, lat]) => L.latLng(lat, lng)))
+          const polygon = L.polygon(latlngs, {
+            color: '#2563eb',
+            weight: 2,
+            opacity: 0.8,
+            fillColor: '#3b82f6',
+            fillOpacity: 0.08,
+          })
+
+          ;(polygon as any).feature = {
+            type: 'Feature',
+            geometry: geom,
+            properties: { id: m.id, name: m.name, kind: 'municipality' },
+          }
+
+          polygon.bindPopup(popupHtml)
+          if (onMapCommunityClick) {
+            polygon.on('popupopen', (e: any) => {
+              const container = e?.popup?.getElement?.()
+              if (!container) return
+              const btn = container.querySelector('.edit-community-btn')
+              if (!btn) return
+              const handler = (ev: Event) => {
+                ev.stopPropagation()
+                onMapCommunityClick({ id: m.id, name: m.name, geometry: geom } as any)
+              }
+              btn.addEventListener('click', handler)
+              polygon.once('popupclose', () => {
+                try { btn.removeEventListener('click', handler) } catch { /* ignore */ }
+              })
+            })
+          }
+
+          drawnItems.addLayer(polygon)
+          municipalityLayersRef.current.push(polygon)
+          partsForFeature.push(polygon)
+        }
+
+        if (partsForFeature.length) {
+          polygonsByFeatureIdRef.current.set(String(m.id), partsForFeature)
+        }
+      }
+    }
+    drawMunicipalities()
+    return () => {
+      cancelled = true
+      const map = mapInstanceRef.current
+      const drawnItems = drawnItemsRef.current
+      municipalityLayersRef.current.forEach((layer) => {
+        try { drawnItems?.removeLayer?.(layer) } catch { /* ignore */ }
+        try { map?.removeLayer?.(layer) } catch { /* ignore */ }
+        const id = layer?.feature?.properties?.id as string | undefined
+        if (id) polygonsByFeatureIdRef.current.delete(id)
+      })
+      municipalityLayersRef.current = []
+    }
+  }, [leafletReady, municipalities, mapCommunities, onMapCommunityClick])
+
+  // Focus map to a community whose name matches focusCommunityName
+  useEffect(() => {
+    if (!leafletReady || !mapInstanceRef.current || !showMapCommunities) return
+    const term = (focusCommunityName || '').trim().toLowerCase()
+    if (!term) return
+    try {
+      const map = mapInstanceRef.current
+      // Search through already drawn community layers
+      const pools = [
+        ...communityLayersRef.current,
+        ...municipalityLayersRef.current,
+      ]
+      for (const layer of pools) {
+        try {
+          const name = String(layer?.feature?.properties?.name || '').toLowerCase()
+          if (name && name.includes(term)) {
+            const b = layer.getBounds?.()
+            if (b && b.isValid && b.isValid()) {
+              map.fitBounds(b.pad(0.1))
+              break
+            }
+          }
+        } catch {
+          /* ignore layer errors */
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [focusCommunityName, leafletReady, showMapCommunities])
 
   useEffect(() => {
     if (!mapInstanceRef.current || typeof window === 'undefined' || !leafletReady)
@@ -608,6 +920,11 @@ export default function LeafletMap({
               iconAnchor: [12, 12],
             })
 
+            if (!map) {
+              console.warn('[Leaflet] Map instance missing, skipping marker creation')
+              return
+            }
+            
             const marker = L.marker([lat, lng], { icon: customIcon })
               .addTo(map)
               ?.bindPopup(
@@ -636,13 +953,18 @@ export default function LeafletMap({
 
       // Fit map to show all markers if there are any
       if (markersRef.current.length > 0) {
-        const group = L.featureGroup(markersRef.current)
-        // Re-check map before fitting bounds
-        const mapForBounds = mapInstanceRef.current
-        if (mapForBounds) {
-          mapForBounds.fitBounds(group.getBounds().pad(0.1))
+        try {
+          const group = L.featureGroup(markersRef.current)
+          const bounds = group.getBounds()
+          // Re-check map before fitting bounds and ensure bounds are valid
+          const mapForBounds = mapInstanceRef.current
+          if (mapForBounds && bounds && bounds.isValid && bounds.isValid()) {
+            mapForBounds.fitBounds(bounds.pad(0.1))
+            console.log('[Leaflet] Map bounds fitted to markers')
+          }
+        } catch (e) {
+          console.warn('[Leaflet] Failed to fit bounds:', e)
         }
-        console.log('[Leaflet] Map bounds fitted to markers')
       }
     }
 

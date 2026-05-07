@@ -88,3 +88,23 @@ export async function deleteRegulatoryRule(id: string): Promise<void> {
   const response = await axiosInstance.delete(`/api/regulatory-rules/rules/${id}/`)
   return response.data
 }
+
+/**
+ * Export regulatory rules to CSV
+ */
+export async function exportRegulatoryRules(params: RegulatoryRulesQueryParams = {}): Promise<Blob> {
+  const queryParams = new URLSearchParams()
+
+  if (params.search) queryParams.append('search', params.search)
+  if (params.year) queryParams.append('year', params.year.toString())
+  if (params.program) queryParams.append('program', params.program)
+  if (params.rule_type) queryParams.append('rule_type', params.rule_type)
+  if (params.category) queryParams.append('category', params.category)
+  if (params.is_active !== undefined) queryParams.append('is_active', params.is_active.toString())
+
+  const response = await axiosInstance.get(`/api/regulatory-rules/rules/export/?${queryParams.toString()}`, {
+    responseType: 'blob',
+  })
+
+  return response.data
+}

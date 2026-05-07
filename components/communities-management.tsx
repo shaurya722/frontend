@@ -42,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
 import { PaginationControls } from '@/components/pagination-controls'
@@ -61,7 +62,7 @@ import {
   Download,
 } from 'lucide-react'
 
-import { useCommunities, useCreateCommunity, useCreateCommunityCensus, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears, useBulkImportCommunities, downloadCommunityCensusTemplate } from '@/features/communities'
+import { useCommunities, useCreateCommunity, useCreateCommunityCensus, useUpdateCommunity, useDeleteCommunity, useCommunity, useCensusYears, useBulkImportCommunities, downloadCommunityCensusTemplate, useInfiniteCommunityDropdown, useExportCommunities } from '@/features/communities'
 import type { Community, CommunityCensus } from '@/features/communities'
 import type { Region } from '@/features/regions'
 import { useRegions } from '@/features/regions'
@@ -135,6 +136,32 @@ function CommunityForm({
     },
   })
 
+  const selectedYear = form.watch('census_year')
+  const [communitySearch, setCommunitySearch] = useState<string>('')
+  const {
+    data: communityInfinite,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteCommunityDropdown(
+    typeof selectedYear === 'number' ? selectedYear : undefined,
+    communitySearch,
+    50,
+    true,
+  )
+
+  const communitySelectOptions = useMemo(() => {
+    const rows = communityInfinite?.pages.flatMap((p) => p.communities) ?? []
+    return [
+      { value: '__create__', label: 'Create new community...' },
+      ...rows.map((c) => ({
+        value: c.name,
+        label: c.name,
+        itemKey: `${c.id}:${c.name}`,
+      })),
+    ]
+  }, [communityInfinite])
+
   const handleFormSubmit = (data: any) => {
     onSubmit(data)
   }
@@ -142,11 +169,26 @@ function CommunityForm({
   return (
     <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
       <div>
-        <Label htmlFor={`${mode}-name`}>Name *</Label>
-        <Input
-          id={`${mode}-name`}
-          className={form.formState.errors.name ? 'border-red-500' : ''}
-          {...form.register('name')}
+        <Label htmlFor={`${mode}-name`}>Community *</Label>
+        <SearchableSelect
+          value={(form.watch('name') || '').toString()}
+          onValueChange={(value) => {
+            if (value === '__create__') {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/dashboard/adjacent-community-management'
+              }
+              return
+            }
+            form.setValue('name', value)
+          }}
+          placeholder="Select community"
+          searchPlaceholder="Search community..."
+          triggerClassName="h-9"
+          onSearchChange={(q) => setCommunitySearch(q)}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onFetchNextPage={() => fetchNextPage()}
+          options={communitySelectOptions}
         />
         {form.formState.errors.name && (
           <p className="text-sm text-red-500 mt-1">{form.formState.errors.name.message}</p>
@@ -375,6 +417,7 @@ export default function CommunitiesManagement() {
   const updateMutation = useUpdateCommunity()
   const deleteMutation = useDeleteCommunity()
   const bulkImportMutation = useBulkImportCommunities()
+  const exportMutation = useExportCommunities()
 
   // Extract data from response
   const communitiesData = useMemo(() => {
@@ -645,16 +688,36 @@ export default function CommunitiesManagement() {
     }
   }
 
+  const handleExportCommunities = async () => {
+    try {
+      const blob = await exportMutation.mutateAsync(queryParams)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'community-census-data.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({
+        title: 'Export failed',
+        description: error?.message || 'Unable to export community census data.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const getTierBadgeColor = (tier?: string) => {
     switch (tier) {
       case '1':
-        return 'bg-blue-100 text-blue-800'
+        return 'bg-primary/10 text-primary'
       case '2':
         return 'bg-green-100 text-green-800'
       case 'Single':
         return 'bg-purple-100 text-purple-800'
       default:
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-muted text-muted-foreground'
     }
   }
 
@@ -684,7 +747,7 @@ export default function CommunitiesManagement() {
             {importErrorDetails.provided_headers && (
               <div>
                 <p className="text-sm font-medium">Provided headers:</p>
-                <pre className="whitespace-pre-wrap wrap-break-word rounded-md bg-white/70 p-2 text-xs text-red-900 max-h-40 overflow-auto">{importErrorDetails.provided_headers.join('\n')}</pre>
+                <pre className="whitespace-pre-wrap wrap-break-word rounded-md bg-card/70 p-2 text-xs text-red-900 max-h-40 overflow-auto">{importErrorDetails.provided_headers.join('\n')}</pre>
               </div>
             )}
           </div>
@@ -707,6 +770,10 @@ export default function CommunitiesManagement() {
               <Button variant="outline" onClick={handleOpenImportDialog}>
                 <UploadCloud className="h-4 w-4 mr-2" />
                 Import
+              </Button>
+              <Button variant="outline" onClick={handleExportCommunities} disabled={exportMutation.isPending}>
+                <Download className="h-4 w-4 mr-2" />
+                {exportMutation.isPending ? 'Exporting...' : 'Export'}
               </Button>
               <Button onClick={handleAddCommunity}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -924,14 +991,14 @@ export default function CommunitiesManagement() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex flex-col gap-2">
-              <span className="text-sm text-gray-600">Need a reference?</span>
+              <span className="text-sm text-muted-foreground">Need a reference?</span>
               <Button variant="secondary" onClick={handleTemplateDownload} disabled={templateDownloading}>
                 <Download className="h-4 w-4 mr-2" />
                 {templateDownloading ? 'Preparing download...' : 'Download sample CSV'}
               </Button>
             </div>
             <div
-              className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200'}`}
+              className={`rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragActive ? 'border-primary bg-primary/5' : 'border-border'}`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleFileDrop}
@@ -946,12 +1013,12 @@ export default function CommunitiesManagement() {
               <label htmlFor="community-import-file" className="flex flex-col items-center gap-2 cursor-pointer">
                 <UploadCloud className="h-6 w-6 text-gray-400" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Click to select or drag and drop</p>
-                  <p className="text-xs text-gray-500">CSV files only • Max 10MB</p>
+                  <p className="text-sm font-medium text-foreground">Click to select or drag and drop</p>
+                  <p className="text-xs text-muted-foreground">CSV files only • Max 10MB</p>
                 </div>
               </label>
               {selectedImportFile && (
-                <p className="mt-3 text-sm text-gray-700">
+                <p className="mt-3 text-sm text-foreground">
                   Selected file: <span className="font-medium">{selectedImportFile.name}</span>
                 </p>
               )}
@@ -984,7 +1051,7 @@ export default function CommunitiesManagement() {
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
               Cancel
             </Button>
-            <Button variant="outline" className='bg-black text-white hover:bg-black/70 hover:text-white' onClick={confirmDeleteCommunity} disabled={deleteMutation.isPending}>
+            <Button variant="destructive" onClick={confirmDeleteCommunity} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>

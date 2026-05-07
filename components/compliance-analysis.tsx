@@ -36,12 +36,15 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
   Settings,
+  Download,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 
 import { Switch } from '@/components/ui/switch'
-import { useCompliance, useRecalculateCompliance } from '@/features/compliance/hooks'
+import { useCompliance, useRecalculateCompliance, useExportCompliance } from '@/features/compliance/hooks'
 import { ComplianceFilters } from '@/features/compliance/types'
 import { useCensusYears } from '@/features/communities'
 import { PaginationControls } from '@/components/pagination-controls'
@@ -50,12 +53,14 @@ import { useToast } from '@/hooks/use-toast'
 export default function ComplianceAnalysis() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [program, setProgram] = useState('')
+  const [program, setProgram] = useState('Paint')
   const [status, setStatus] = useState('')
   const [selectedYear, setSelectedYear] = useState<string>('all')
   const [page, setPage] = useState(1)
-  const [limit] = useState(10)
-  const [ordering, setOrdering] = useState('community__name')
+  const [limit, setLimit] = useState(10)
+  // Sort state — same pattern as AdjcentRelloacation / communities-management
+  const [sortOrder, setSortOrder] = useState<1 | -1>(1)
+  const [sortBy, setSortBy] = useState('community_name')
   const [adjacentLogicEnabled, setAdjacentLogicEnabled] = useState(false)
   const [eventOffsetsEnabled, setEventOffsetsEnabled] = useState(false)
   const [directServiceOffsetsEnabled, setDirectServiceOffsetsEnabled] = useState(false)
@@ -77,13 +82,24 @@ export default function ComplianceAnalysis() {
       year: selectedYear !== 'all' ? selectedYear : undefined,
       page,
       limit,
-      ordering,
+      sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
     }),
-    [debouncedSearch, program, status, selectedYear, page, limit, ordering]
+    [debouncedSearch, program, status, selectedYear, page, limit, sortBy, sortOrder]
   )
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 1 ? -1 : 1)
+    } else {
+      setSortBy(field)
+      setSortOrder(-1)
+    }
+    setPage(1)
+  }
 
   const { data, isLoading, error } = useCompliance(filters)
   const { mutateAsync: recalculateCompliance, isPending: isRecalculating } = useRecalculateCompliance()
+  const exportMutation = useExportCompliance()
   const { toast } = useToast()
 
   // Fetch census years
@@ -166,6 +182,26 @@ export default function ComplianceAnalysis() {
     }
   }
 
+  const handleExportCompliance = async () => {
+    try {
+      const blob = await exportMutation.mutateAsync(filters)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'compliance-export.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({
+        title: 'Export failed',
+        description: error?.message || 'Unable to export compliance data.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   if (error) {
     return (
       <div className='space-y-6'>
@@ -209,16 +245,17 @@ export default function ComplianceAnalysis() {
               {/* Program Filter */}
               <div className='flex items-center gap-2'>
                 <Label className='text-sm whitespace-nowrap'>Program</Label>
-                <Select value={program || 'all'} onValueChange={handleProgramChange}>
+                <Select value={program || 'Paint'} onValueChange={handleProgramChange}>
                   <SelectTrigger className='w-40'>
                     <SelectValue placeholder='Select program' />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='all'>All</SelectItem>
+                    {/* <SelectItem value='all'>All</SelectItem> */}
                     <SelectItem value='Paint'>Paint</SelectItem>
                     <SelectItem value='Lighting'>Lighting</SelectItem>
                     <SelectItem value='Solvents'>Solvents</SelectItem>
                     <SelectItem value='Pesticides'>Pesticides</SelectItem>
+                    <SelectItem value='Fertilizers'>Fertilizers</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -295,6 +332,10 @@ export default function ComplianceAnalysis() {
                 />
               </div>
               <div className='flex items-center gap-2'>
+                <Button variant='outline' onClick={handleExportCompliance} disabled={exportMutation.isPending}>
+                  <Download className='w-4 h-4 mr-2' />
+                  {exportMutation.isPending ? 'Exporting…' : 'Export'}
+                </Button>
                 <Button onClick={handleRecalculate} disabled={isRecalculating}>
                   {isRecalculating ? 'Calculating…' : 'Calculate'}
                 </Button>
@@ -341,10 +382,10 @@ export default function ComplianceAnalysis() {
         <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>Excesses</CardTitle>
-            <TrendingUp className='h-4 w-4 text-blue-600' />
+            <TrendingUp className='h-4 w-4 text-primary' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold text-blue-600'>
+            <div className='text-2xl font-bold text-primary'>
               {isLoading ? '...' : summary?.excesses || 0}
             </div>
             <p className='text-xs text-muted-foreground'>
@@ -401,40 +442,134 @@ export default function ComplianceAnalysis() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className='bg-gray-50'>
-                      Census Subdivision
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('community_name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        Census Subdivision
+                        {sortBy === 'community_name' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
                     </TableHead>
-                    <TableHead className='bg-gray-50'>
-                      Program
+                    <TableHead>
+                        Program
                     </TableHead>
                     {directServiceOffsetsEnabled && (
-                      <TableHead className='bg-gray-50'>
-                        Base Required
+                      <TableHead>
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('base_required_sites')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                          Base Required
+                          {sortBy === 'base_required_sites' ? (
+                            sortOrder === 1 ?
+                              <ChevronUp className="ml-2 h-4 w-4" /> :
+                              <ChevronDown className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                          )}
+                        </Button>
                       </TableHead>
                     )}
                     {adjacentLogicEnabled && (
-                      <TableHead className='bg-gray-50'>
-                        Sites from Adjacent
+                      <TableHead>
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('sites_from_adjacent')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                          Sites from Adjacent
+                          {sortBy === 'sites_from_adjacent' ? (
+                            sortOrder === 1 ?
+                              <ChevronUp className="ml-2 h-4 w-4" /> :
+                              <ChevronDown className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                          )}
+                        </Button>
                       </TableHead>
                     )}
                     {eventOffsetsEnabled && (
-                      <TableHead className='bg-gray-50'>
-                        Sites from Events
+                      <TableHead>
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('sites_from_events')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                          Sites from Events
+                          {sortBy === 'sites_from_events' ? (
+                            sortOrder === 1 ?
+                              <ChevronUp className="ml-2 h-4 w-4" /> :
+                              <ChevronDown className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                          )}
+                        </Button>
                       </TableHead>
                     )}
-                    <TableHead className='bg-gray-50'>
-                      Required
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('required_sites')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        Required
+                        {sortBy === 'required_sites' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
                     </TableHead>
-                    <TableHead className='bg-gray-50'>Actual</TableHead>
-                    <TableHead className='bg-gray-50'>
-                      Shortfall
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('actual_sites')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        Actual
+                        {sortBy === 'actual_sites' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
                     </TableHead>
-                    <TableHead className='bg-gray-50'>
-                      Excess
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('shortfall')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        Shortfall
+                        {sortBy === 'shortfall' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
                     </TableHead>
-                    <TableHead className='bg-gray-50'>Rate</TableHead>
-                    <TableHead className='bg-gray-50'>
-                      Status
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('excess')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        Excess
+                        {sortBy === 'excess' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('compliance_rate')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        Rate
+                        {sortBy === 'compliance_rate' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('status')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        Status
+                        {sortBy === 'status' ? (
+                          sortOrder === 1 ?
+                            <ChevronUp className="ml-2 h-4 w-4" /> :
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -505,6 +640,11 @@ export default function ComplianceAnalysis() {
                 hasNext={hasNext}
                 hasPrev={hasPrev}
                 label="results"
+                pageSizeOptions={[10, 20, 50, 100]}
+                onPageSizeChange={(size) => {
+                  setLimit(size)
+                  setPage(1)
+                }}
               />
             </div>
           </div>

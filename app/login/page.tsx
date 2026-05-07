@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, MapPin, AlertCircle } from "lucide-react"
 import { login } from "@/lib/auth"
 import { defaultProtectedRoute } from "@/lib/route-config"
+import { getApiErrorDescription } from "@/lib/api-response-messages"
 
 export default function LoginPage() {
   const [credentials, setCredentials] = useState({
@@ -38,26 +39,26 @@ export default function LoginPage() {
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       router.replace(defaultProtectedRoute)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[v0] Login error:", error)
-      setError(error.message || "Invalid email or password. Please try again.")
+      setError(getApiErrorDescription(error, "Invalid email or password. Please try again."))
     }
 
     setIsLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-blue-600 p-3 rounded-full">
-              <MapPin className="w-8 h-8 text-white" />
+        <div className="mb-8 text-center">
+          <div className="mb-4 flex items-center justify-center">
+            <div className="rounded-full bg-primary p-3 shadow-sm ring-4 ring-primary/10">
+              <MapPin className="h-8 w-8 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">ArcGIS Compliance Tool</h1>
-          <p className="text-gray-600 mt-2">Ontario HSP & EEE Collection Site Assessment</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Arc Ontario Compliance Tool</h1>
+          <p className="mt-2 text-muted-foreground">Ontario HSP & EEE Collection Site Assessment</p>
         </div>
 
         {/* Login Form */}
@@ -99,9 +100,9 @@ export default function LoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
                     ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
+                      <Eye className="h-4 w-4 text-muted-foreground" />
                     )}
                   </Button>
                 </div>
@@ -141,9 +142,9 @@ export default function LoginPage() {
         </Card>
 
         {/* Footer */}
-        <div className="text-center mt-8 text-sm text-gray-500">
-          <p>© 2025 ArcGIS Compliance Tool. All rights reserved.</p>
-          <p>Phase 1 - Ontario Implementation</p>
+        <div className="mt-8 text-center text-sm text-muted-foreground">
+          <p>© 2026 Arc Ontario Compliance Tool. All rights reserved.</p>
+          <p>Phase 1 — Ontario implementation</p>
         </div>
       </div>
     </div>

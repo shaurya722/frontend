@@ -1,6 +1,7 @@
 // Axios instance with interceptors
 
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
+import { extractApiErrorMessage } from './api-response-messages'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.3.154:8000'
 
@@ -20,7 +21,12 @@ axiosInstance.interceptors.request.use(
     if (typeof window !== 'undefined') {
       const accessToken = localStorage.getItem('access_token')
       // Don't add token to login or token refresh endpoints
-      const skipAuthEndpoints = ['/accounts/login/', '/accounts/token/refresh/']
+      const skipAuthEndpoints = [
+        '/accounts/login/',
+        '/accounts/token/refresh/',
+        '/api/auth/token/',
+        '/api/auth/token/refresh/',
+      ]
       const shouldSkipAuth = skipAuthEndpoints.some(endpoint => config.url?.includes(endpoint))
       
       if (accessToken && config.headers && !shouldSkipAuth) {
@@ -74,8 +80,6 @@ axiosInstance.interceptors.response.use(
       let errorMessage = 'An error occurred'
 
       try {
-       
-        
         // If data is already parsed, use it
         if (typeof data === 'object' && data !== null) {
           parsedData = data
@@ -83,34 +87,11 @@ axiosInstance.interceptors.response.use(
           // Try to parse as JSON
           parsedData = JSON.parse(data)
         }
-        
-        
-        
-        // Extract error message from various formats
-        if (Array.isArray(parsedData?.errors) && parsedData.errors.length > 0) {
-          // Handle errors array: [{ site_census_id, error: "[\"message\"]" }]
-          const errorMessages = parsedData.errors.map((err: any) => {
-            
-            if (typeof err.error === 'string') {
-              try {
-                const parsed = JSON.parse(err.error)
-                
-                if (Array.isArray(parsed)) return parsed.join(', ')
-                return String(parsed)
-              } catch {
-                return err.error
-              }
-            }
-            return String(err.error || err.message || 'Unknown error')
-          })
-          errorMessage = errorMessages.join('; ')
-          
-        } else if (Array.isArray(parsedData?.non_field_errors) && parsedData.non_field_errors.length > 0) {
-          errorMessage = parsedData.non_field_errors.join(', ')
-        } else {
-          errorMessage = parsedData?.message || parsedData?.detail || parsedData?.error || `HTTP ${status} error`
-          
-        }
+
+        errorMessage = extractApiErrorMessage(parsedData, {
+          httpStatus: status,
+          fallback: `HTTP ${status} error`,
+        })
       } catch (parseError) {
         // If JSON parsing fails, it's likely an HTML error page
         console.error('❌ JSON Parse Error - likely HTML error page:', typeof data === 'string' ? data.substring(0, 200) : data)
@@ -125,19 +106,17 @@ axiosInstance.interceptors.response.use(
         errors: parsedData?.errors,
       })
 
-      // Handle 401 Unauthorized - token expired or invalid
+      // Handle 401 Unauthorized
+      //
+      // IMPORTANT: Do not hard-redirect to `/login` from a global interceptor.
+      // Some pages (like report configuration) may hit endpoints that return 401
+      // while the user is still "logged in" via frontend-only auth (mock tokens),
+      // and an unconditional redirect is a jarring UX.
+      //
+      // Instead, bubble the error up so the calling UI can decide how to handle it
+      // (show an error state, prompt re-auth, etc.).
       if (status === 401) {
-        if (typeof window !== 'undefined') {
-          // Clear tokens and redirect to login
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-          localStorage.removeItem('user')
-
-          // Only redirect if not already on login page and not making a login request
-          if (!window.location.pathname.includes('/login') && !originalRequest.url?.includes('/login')) {
-            window.location.href = '/login'
-          }
-        }
+        // No-op here by design.
       }
 
       // Handle other specific status codes
@@ -181,3 +160,23 @@ axiosInstance.interceptors.response.use(
 )
 
 export default axiosInstance
+
+// Auth helpers
+export async function login(username: string, password: string) {
+  // Use raw axios to avoid interceptor Authorization injection
+  const res = await axiosInstance.post('/api/auth/token/', { username, password })
+  if (typeof window !== 'undefined') {
+    // Support multiple possible payload shapes
+    const data: any = res.data || {}
+    const access = data.access || data.access_token || data.token || data.accessToken
+    const refresh = data.refresh || data.refresh_token
+    if (access) localStorage.setItem('access_token', access)
+    if (refresh) localStorage.setItem('refresh_token', refresh)
+  }
+  return res.data
+}
+
+export async function getProfile() {
+  const res = await axiosInstance.get('/api/auth/profile/')
+  return res.data
+}

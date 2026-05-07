@@ -338,7 +338,7 @@ export default function DirectServiceOffset() {
                   placeholder="0"
                   className="pr-8"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
               </div>
             </div>
 
@@ -361,9 +361,9 @@ export default function DirectServiceOffset() {
             </Button>
           </div>
 
-          <Alert className="bg-gray-50 border-gray-200">
-            <FileText className="h-4 w-4 text-gray-600" />
-            <AlertDescription className="text-gray-700">
+          <Alert className="bg-muted/40 border-border">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <AlertDescription className="text-foreground">
               <span className="font-medium">Calculation:</span> New Required = ceil(Required × (1 - %reduction)). Every community requiring at least 1 site will still require minimum 1 site (cannot be reduced below 1).
             </AlertDescription>
           </Alert>
@@ -393,7 +393,7 @@ export default function DirectServiceOffset() {
               <AlertDescription>Failed to load preview data.</AlertDescription>
             </Alert>
           ) : !previewData || previewData.communities.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-muted-foreground">
               <MapPin className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No communities found for the selected year and program</p>
             </div>
@@ -401,8 +401,8 @@ export default function DirectServiceOffset() {
             <div className="border rounded-md">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="font-medium text-gray-700">
+                    <TableRow className="bg-muted/40">
+                    <TableHead className="font-medium text-foreground">
                       <Button variant="ghost" size="sm" onClick={() => handleSort('community_name')} className="h-auto p-0 font-semibold" disabled={isPreviewLoading}>
                         Community
                         {sortBy === 'community_name' ? (
@@ -414,7 +414,7 @@ export default function DirectServiceOffset() {
                         )}
                       </Button>
                     </TableHead>
-                    <TableHead className="font-medium text-gray-700 text-center">
+                    <TableHead className="font-medium text-foreground text-center">
                       <Button variant="ghost" size="sm" onClick={() => handleSort('base_required_sites')} className="h-auto p-0 font-semibold" disabled={isPreviewLoading}>
                         Required
                         {sortBy === 'base_required_sites' ? (
@@ -426,8 +426,8 @@ export default function DirectServiceOffset() {
                         )}
                       </Button>
                     </TableHead>
-                    <TableHead className="font-medium text-gray-700 text-center">% Reduction</TableHead>
-                    <TableHead className="font-medium text-gray-700 text-center">
+                    <TableHead className="font-medium text-foreground text-center">% Reduction</TableHead>
+                    <TableHead className="font-medium text-foreground text-center">
                       <Button variant="ghost" size="sm" onClick={() => handleSort('new_required_sites')} className="h-auto p-0 font-semibold" disabled={isPreviewLoading}>
                         New Required
                         {sortBy === 'new_required_sites' ? (
@@ -439,17 +439,17 @@ export default function DirectServiceOffset() {
                         )}
                       </Button>
                     </TableHead>
-                    <TableHead className="font-medium text-gray-700 text-right">Actions</TableHead>
+                    <TableHead className="font-medium text-foreground text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {previewData.communities.map((community) => (
-                    <TableRow key={community.community_id} className="hover:bg-gray-50">
+                    <TableRow key={community.community_id} className="hover:bg-muted/40">
                       <TableCell>
-                        <div className="font-medium text-gray-900">{community.community_name}</div>
-                        <div className="text-sm text-gray-500">Pop: {community.population.toLocaleString()}</div>
+                        <div className="font-medium text-foreground">{community.community_name}</div>
+                        <div className="text-sm text-muted-foreground">Pop: {community.population.toLocaleString()}</div>
                       </TableCell>
-                      <TableCell className="text-center text-gray-700">
+                      <TableCell className="text-center text-foreground">
                         {community.base_required_sites}
                       </TableCell>
                       <TableCell className="text-center">
@@ -463,7 +463,7 @@ export default function DirectServiceOffset() {
                               onChange={(e) => setEditingCommunityPercentage(Number(e.target.value) || 0)}
                               className="w-16 h-8 text-center px-1"
                             />
-                            <span className="text-xs text-gray-500">%</span>
+                            <span className="text-xs text-muted-foreground">%</span>
                           </div>
                         ) : (
                           <Badge
@@ -471,7 +471,7 @@ export default function DirectServiceOffset() {
                             className={`text-xs ${
                               community.offset_source === 'community'
                                 ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-primary/10 text-primary border-primary/20'
                             }`}
                           >
                             {community.offset_percentage}%
@@ -483,7 +483,7 @@ export default function DirectServiceOffset() {
                           className={`font-medium ${
                             community.new_required_sites < community.base_required_sites
                               ? 'text-green-600'
-                              : 'text-gray-700'
+                              : 'text-foreground'
                           }`}
                         >
                           {community.new_required_sites}
@@ -569,7 +569,7 @@ export default function DirectServiceOffset() {
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
             </div>
           ) : !offsets || offsets.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-muted-foreground">
               <Zap className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No direct service offsets configured</p>
               <p className="text-sm">Create an offset to reduce site requirements</p>
@@ -606,7 +606,7 @@ export default function DirectServiceOffset() {
                           className="w-20"
                         />
                       ) : (
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                        <Badge variant="outline" className="bg-primary/10 text-primary">
                           {offset.percentage}%
                         </Badge>
                       )}
@@ -696,7 +696,7 @@ export default function DirectServiceOffset() {
 
           <div className="mt-4 space-y-2">
             <h4 className="font-medium">Allocation Guidelines:</h4>
-            <ul className="text-sm space-y-1 text-gray-600">
+            <ul className="text-sm space-y-1 text-muted-foreground">
               <li>• Prioritize high-density urban areas with established pickup routes</li>
               <li>• Maintain minimum coverage in rural and remote areas</li>
               <li>• Consider transportation logistics and service efficiency</li>

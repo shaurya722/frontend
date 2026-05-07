@@ -139,7 +139,15 @@ export async function bulkImportCommunities(file: File) {
  * Export communities to CSV
  */
 export async function exportCommunities(params: CommunitiesQueryParams = {}) {
-  const response = await axiosInstance.post('/communities/export/', params, {
+  const queryParams = new URLSearchParams()
+
+  if (params.search) queryParams.append('search', params.search)
+  if (params.year) queryParams.append('year', params.year.toString())
+  if (params.tier) queryParams.append('tier', params.tier)
+  if (params.region) queryParams.append('region', params.region)
+  if (params.is_active !== undefined) queryParams.append('is_active', params.is_active.toString())
+
+  const response = await axiosInstance.get(`/api/community/community-census-data/import-export/?${queryParams.toString()}`, {
     responseType: 'blob',
   })
 
@@ -168,18 +176,83 @@ export async function fetchCensusYears(): Promise<{ years: Array<{ id: number; y
   return response.data
 }
 
+/** DRF `next` only when the payload includes that field */
+function drfNextFrom(r: Record<string, unknown>): string | null | undefined {
+  if (!('next' in r)) return undefined
+  const n = r.next
+  if (n === null) return null
+  if (typeof n === 'string') return n
+  return undefined
+}
+
 /**
- * Fetch communities for dropdown based on census year
+ * Normalize model-dropdown / dropdown API payloads into CommunityDropdownResponse.
  */
-export async function fetchCommunityDropdown(year?: number): Promise<CommunityDropdownResponse> {
-  const queryParams = new URLSearchParams()
-  if (year) {
-    queryParams.append('year', year.toString())
+function normalizeCommunityDropdownResponse(raw: unknown): CommunityDropdownResponse {
+  if (!raw || typeof raw !== 'object') {
+    return { communities: [], total: 0 }
+  }
+  const r = raw as Record<string, unknown>
+  const nextLink = drfNextFrom(r)
+  const withNext = (base: CommunityDropdownResponse): CommunityDropdownResponse =>
+    nextLink !== undefined ? { ...base, next: nextLink } : base
+
+  if (Array.isArray(r.communities)) {
+    const communities = (r.communities as { id?: string | number; name?: string }[]).map((c) => ({
+      id: String(c.id ?? c.name ?? ''),
+      name: String(c.name ?? ''),
+    }))
+    const total = typeof r.total === 'number' ? r.total : communities.length
+    return withNext({ communities, total })
   }
 
-  const response = await axiosInstance.get<CommunityDropdownResponse>(
-    `/api/community/communities/dropdown/?${queryParams.toString()}`
+  if (Array.isArray(r.results)) {
+    const rows = r.results as Record<string, unknown>[]
+    const communities = rows.map((row) => ({
+      id: String(row.id ?? row.pk ?? row.name ?? row.community_name ?? ''),
+      name: String(
+        row.name ?? row.community_name ?? row.community ?? row.label ?? '',
+      ),
+    }))
+    const total = typeof r.count === 'number' ? r.count : communities.length
+    return withNext({ communities, total })
+  }
+
+  if (Array.isArray(raw)) {
+    const rows = raw as Record<string, unknown>[]
+    return {
+      communities: rows.map((row) => ({
+        id: String(row.id ?? row.name ?? ''),
+        name: String(row.name ?? row.community_name ?? ''),
+      })),
+      total: rows.length,
+    }
+  }
+
+  return { communities: [], total: 0 }
+}
+
+/**
+ * Fetch communities for dropdown (model-dropdown list).
+ * GET /api/community/communities/model-dropdown/?page=1&limit=200&search=…&year=…
+ */
+export async function fetchCommunityDropdown(
+  year?: number,
+  search?: string,
+  page?: number,
+  limit?: number,
+): Promise<CommunityDropdownResponse> {
+  const queryParams = new URLSearchParams()
+  if (year !== undefined && year !== null && !Number.isNaN(year)) {
+    queryParams.append('year', String(year))
+  }
+  if (search) queryParams.append('search', search)
+  queryParams.append('page', String(page ?? 1))
+  queryParams.append('limit', String(limit ?? 200))
+
+  const response = await axiosInstance.get<unknown>(
+    `/api/community/communities/model-dropdown/?${queryParams.toString()}`,
   )
 
-  return response.data
+  return normalizeCommunityDropdownResponse(response.data)
 }

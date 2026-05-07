@@ -13,6 +13,7 @@ import {
   type GetCensusYearsParams
 } from '@/features/census-year/census-years'
 import { useToast } from '@/hooks/use-toast'
+import { getApiErrorDescription } from '@/lib/api-response-messages'
 
 /**
  * Hook to fetch paginated census years
@@ -40,10 +41,10 @@ export function useCreateCensusYear() {
         description: 'Census year created successfully',
       })
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to create census year',
+        description: getApiErrorDescription(error, 'Failed to create census year'),
         variant: 'destructive',
       })
     },
@@ -67,10 +68,10 @@ export function useUpdateCensusYear() {
         description: 'Census year updated successfully',
       })
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to update census year',
+        description: getApiErrorDescription(error, 'Failed to update census year'),
         variant: 'destructive',
       })
     },
@@ -93,10 +94,10 @@ export function useDeleteCensusYear() {
         description: 'Census year deleted successfully',
       })
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to delete census year',
+        description: getApiErrorDescription(error, 'Failed to delete census year'),
         variant: 'destructive',
       })
     },

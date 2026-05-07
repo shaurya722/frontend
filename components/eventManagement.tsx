@@ -89,9 +89,11 @@ export default function ToolBEventApplication() {
   // Search and pagination state
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [sortBy, setSortBy] = useState("-shortfall");
+  // Sort state — same pattern as AdjcentRelloacation / communities-management
+  const [sortOrder, setSortOrder] = useState<1 | -1>(-1);
+  const [sortBy, setSortBy] = useState("shortfall");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(20);
 
   const programs = ["Paint", "Pesticides", "Solvents", "Lighting"];
 
@@ -102,16 +104,18 @@ export default function ToolBEventApplication() {
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
-      setSortBy(sortBy.startsWith('-') ? field : `-${field}`)
+      setSortOrder(sortOrder === 1 ? -1 : 1)
     } else {
-      setSortBy(`-${field}`)
+      setSortBy(field)
+      setSortOrder(-1)
     }
+    setCurrentPage(1)
   }
 
   const { data: eventData, isLoading } = useEventListing({
     year: selectedYear,
     search: debouncedSearch || undefined,
-    sort: sortBy,
+    sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
     page: currentPage,
     limit: pageSize,
   });
@@ -403,13 +407,13 @@ export default function ToolBEventApplication() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50">
+                      <TableHead className="cursor-pointer hover:bg-muted/60">
                         <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                           Community
-                          {sortBy === 'name' || sortBy === '-name' ? (
-                            sortBy.startsWith('-') ?
-                              <ChevronDown className="ml-2 h-4 w-4" /> :
-                              <ChevronUp className="ml-2 h-4 w-4" />
+                          {sortBy === 'name' ? (
+                            sortOrder === 1 ?
+                              <ChevronUp className="ml-2 h-4 w-4" /> :
+                              <ChevronDown className="ml-2 h-4 w-4" />
                           ) : (
                             <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
                           )}
@@ -418,31 +422,31 @@ export default function ToolBEventApplication() {
                       {/* <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
                         Shortfall
                       </TableHead> */}
-                      <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
+                      <TableHead className="cursor-pointer hover:bg-muted/60 text-right">
                         <Button variant="ghost" size="sm" onClick={() => handleSort('availabel_event')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                           Events Available
-                          {sortBy === 'availabel_event' || sortBy === '-availabel_event' ? (
-                            sortBy.startsWith('-') ?
-                              <ChevronDown className="ml-2 h-4 w-4" /> :
-                              <ChevronUp className="ml-2 h-4 w-4" />
+                          {sortBy === 'availabel_event' ? (
+                            sortOrder === 1 ?
+                              <ChevronUp className="ml-2 h-4 w-4" /> :
+                              <ChevronDown className="ml-2 h-4 w-4" />
                           ) : (
                             <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
                           )}
                         </Button>
                       </TableHead>
-                      <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-right">
+                      <TableHead className="cursor-pointer hover:bg-muted/60 text-right">
                         <Button variant="ghost" size="sm" onClick={() => handleSort('applied_event')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                           Events Applied
-                          {sortBy === 'applied_event' || sortBy === '-applied_event' ? (
-                            sortBy.startsWith('-') ?
-                              <ChevronDown className="ml-2 h-4 w-4" /> :
-                              <ChevronUp className="ml-2 h-4 w-4" />
+                          {sortBy === 'applied_event' ? (
+                            sortOrder === 1 ?
+                              <ChevronUp className="ml-2 h-4 w-4" /> :
+                              <ChevronDown className="ml-2 h-4 w-4" />
                           ) : (
                             <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
                           )}
                         </Button>
                       </TableHead>
-                      <TableHead className="cursor-pointer hover:bg-muted/50 bg-gray-50 text-center">
+                      <TableHead className="cursor-pointer hover:bg-muted/60 text-center">
                         Actions
                       </TableHead>
                     </TableRow>

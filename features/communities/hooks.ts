@@ -1,6 +1,6 @@
 // Communities React Query hooks
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchCommunities,
   fetchCommunityById,
@@ -20,12 +20,11 @@ export const COMMUNITIES_QUERY_KEY = 'communities'
 /**
  * Hook to fetch paginated communities with filters
  */
-export function useCommunities(params: CommunitiesQueryParams = {}) {
+export function useCommunities(params: CommunitiesQueryParams = {}, enabled = true) {
   return useQuery({
     queryKey: [COMMUNITIES_QUERY_KEY, params],
     queryFn: () => fetchCommunities(params),
-    // staleTime: 30000, // 30 seconds
-    // retry: 2,
+    enabled,
   })
 }
 
@@ -141,11 +140,54 @@ export function useCensusYears() {
 /**
  * Hook to fetch communities for dropdown
  */
-export function useCommunityDropdown(year?: number) {
+export function useCommunityDropdown(
+  year?: number,
+  search?: string,
+  page?: number,
+  limit?: number,
+  enabledOverride?: boolean,
+) {
   return useQuery({
-    queryKey: ['community-dropdown', year],
-    queryFn: () => fetchCommunityDropdown(year),
-    enabled: !!year,
+    queryKey: [
+      'community-dropdown',
+      { year, search: search || '', page: page ?? 1, limit: limit ?? 200 },
+    ],
+    queryFn: () => fetchCommunityDropdown(year, search, page ?? 1, limit ?? 200),
+    enabled: enabledOverride ?? !!year,
     staleTime: 60000, // 1 minute
+  })
+}
+
+const DEFAULT_INFINITE_PAGE_SIZE = 50
+
+/**
+ * Infinite model-dropdown list: loads page 1, then fetches more when the parent
+ * calls `fetchNextPage()` (e.g. from scroll near end of the options list).
+ */
+export function useInfiniteCommunityDropdown(
+  year?: number,
+  search?: string,
+  pageSize: number = DEFAULT_INFINITE_PAGE_SIZE,
+  enabledOverride?: boolean,
+) {
+  const limit = pageSize > 0 ? pageSize : DEFAULT_INFINITE_PAGE_SIZE
+  return useInfiniteQuery({
+    queryKey: ['community-dropdown-infinite', { year, search: search || '', limit }],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      fetchCommunityDropdown(year, search, pageParam as number, limit),
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((acc, p) => acc + p.communities.length, 0)
+      if (lastPage.communities.length === 0) return undefined
+      if (lastPage.next === null) return undefined
+      if (typeof lastPage.next === 'string' && lastPage.next.length > 0) {
+        return allPages.length + 1
+      }
+      if (lastPage.total > 0 && loaded >= lastPage.total) return undefined
+      if (lastPage.communities.length < limit) return undefined
+      return allPages.length + 1
+    },
+    enabled: enabledOverride ?? !!year,
+    staleTime: 60_000,
   })
 }

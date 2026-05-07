@@ -66,7 +66,7 @@ export default function UserMenu() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10">
-            <AvatarFallback className="bg-blue-600 text-white">
+            <AvatarFallback className="bg-primary text-primary-foreground">
               {getInitials(user.name)}
             </AvatarFallback>
           </Avatar>
@@ -93,10 +93,6 @@ export default function UserMenu() {
         <DropdownMenuItem onClick={handleProfile} className="cursor-pointer">
           <User className="mr-2 h-4 w-4" />
           <span>Profile</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleChangePassword} className="cursor-pointer">
-          <KeyRound className="mr-2 h-4 w-4" />
-          <span>Change Password</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">

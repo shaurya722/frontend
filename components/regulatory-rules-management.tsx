@@ -41,9 +41,9 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { Edit, CheckCircle, Plus, Info, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown, Download } from 'lucide-react'
 import type { RegulatoryRule } from '@/features/regulatory-rules'
-import { useRegulatoryRules, useRegulatoryRule, useUpdateRegulatoryRule, useDeleteRegulatoryRule, useCreateRegulatoryRule } from '@/features/regulatory-rules'
+import { useRegulatoryRules, useRegulatoryRule, useUpdateRegulatoryRule, useDeleteRegulatoryRule, useCreateRegulatoryRule, useExportRegulatoryRules } from '@/features/regulatory-rules'
 import { useCensusYears } from '@/features/communities'
 import { PaginationControls } from '@/components/pagination-controls'
 
@@ -178,6 +178,7 @@ export default function RegulatoryRulesManagement({
   const updateMutation = useUpdateRegulatoryRule()
   const deleteMutation = useDeleteRegulatoryRule()
   const createMutation = useCreateRegulatoryRule()
+  const exportMutation = useExportRegulatoryRules()
 
   // Create form validation schema
   const createSchema = yup.object({
@@ -395,6 +396,22 @@ export default function RegulatoryRulesManagement({
     }
   }
 
+  const handleExportRegulatoryRules = async () => {
+    try {
+      const blob = await exportMutation.mutateAsync(queryParams)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'regulatory-rules-export.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Unable to export regulatory rules.')
+    }
+  }
+
   const handleEditCommunity = editForm.handleSubmit(handleSaveRule)
 
 
@@ -470,21 +487,21 @@ export default function RegulatoryRulesManagement({
   const getRuleTypeBadgeColor = (ruleType: string) => {
     switch (ruleType) {
       case 'Site Requirements':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+        return 'bg-primary/10 text-primary'
       case 'Events':
-        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
+        return 'bg-purple-100 text-purple-700'
       case 'Reallocation':
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300'
+        return 'bg-orange-100 text-orange-700'
       case 'site_calculation':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+        return 'bg-primary/10 text-primary'
       case 'minimum_requirement':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+        return 'bg-green-100 text-green-700'
       case 'offset_event':
-        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
+        return 'bg-purple-100 text-purple-700'
       case 'offset_adjacent':
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300'
+        return 'bg-orange-100 text-orange-700'
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
+        return 'bg-muted text-muted-foreground'
     }
   }
 
@@ -573,7 +590,7 @@ export default function RegulatoryRulesManagement({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold text-blue-600'>
+            <div className='text-2xl font-bold text-primary'>
               {ruleStats.siteCalculation}
             </div>
           </CardContent>
@@ -680,9 +697,13 @@ export default function RegulatoryRulesManagement({
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" onClick={handleExportRegulatoryRules} disabled={exportMutation.isPending}>
+              <Download className="h-4 w-4 mr-2" />
+              {exportMutation.isPending ? 'Exporting...' : 'Export'}
+            </Button>
             <Button 
               onClick={() => setIsCreateDialogOpen(true)}
-              className="bg-black hover:bg-black/80"
+              className=""
             >
               <Plus className="h-4 w-4 mr-2" />
               Create Rule
@@ -692,7 +713,7 @@ export default function RegulatoryRulesManagement({
           {/* Rules Table */}
           <div className='border rounded-lg relative'>
             {isLoading && (
-              <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 flex items-center justify-center z-10 rounded-lg">
+              <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10 rounded-lg">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                   Loading regulatory rules...
@@ -1159,7 +1180,7 @@ export default function RegulatoryRulesManagement({
                   type="checkbox"
                   id='edit-active'
                   {...editForm.register('is_active')}
-                  className="rounded border-gray-300"
+                  className="rounded border-border"
                 />
                 <Label htmlFor='edit-active'>Rule is active</Label>
               </div>
@@ -1419,7 +1440,7 @@ export default function RegulatoryRulesManagement({
                 type="checkbox"
                 id='create-active'
                 {...createForm.register('is_active')}
-                className="rounded border-gray-300"
+                className="rounded border-border"
               />
               <Label htmlFor='create-active'>Rule is active</Label>
             </div>

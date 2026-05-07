@@ -68,6 +68,6 @@ export const useImportSiteCensusData = () => {
 
 export const useExportSiteCensusData = () => {
   return useMutation({
-    mutationFn: () => exportSiteCensusData(),
+    mutationFn: (filters: SitesFilters = {}) => exportSiteCensusData(filters),
   });
 };

@@ -18,6 +18,7 @@ export async function fetchAdjacentAllocations(
       sort: params.sort,
       page: params.page ?? 1,
       limit: params.limit ?? 20,
+      search: params.search,
     },
   })
   return data

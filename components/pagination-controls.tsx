@@ -67,7 +67,7 @@ export function PaginationControls({
   const showPageSizeSelector = Array.isArray(pageSizeOptions) && pageSizeOptions.length > 0 && !!onPageSizeChange
 
   return (
-    <div className={cn('flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-3', className)}>
+    <div className={cn('flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-3 mb-2', className)}>
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div className="text-sm text-gray-600">
           Showing {currentCount} of {totalCount} {label}

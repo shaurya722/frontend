@@ -133,4 +133,6 @@ export interface CommunityDropdownItem {
 export interface CommunityDropdownResponse {
   communities: CommunityDropdownItem[]
   total: number
+  /** DRF pagination: URL string if more pages, `null` if last page, omit if unknown */
+  next?: string | null
 }

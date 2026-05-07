@@ -11,6 +11,7 @@ export const fetchCompliance = async (
   if (filters.year) params.append('year', filters.year)
   if (filters.status) params.append('status', filters.status)
   if (filters.search) params.append('search', filters.search)
+  if (filters.sort) params.append('sort', filters.sort)
   if (filters.ordering) params.append('ordering', filters.ordering)
   if (filters.page) params.append('page', filters.page.toString())
   if (filters.limit) params.append('limit', filters.limit.toString())
@@ -28,3 +29,21 @@ export const recalculateCompliance = async (censusYearId: number) => {
 
   return response.data
 };
+
+export const exportCompliance = async (filters: ComplianceFilters = {}): Promise<Blob> => {
+  const params = new URLSearchParams()
+
+  if (filters.program) params.append('program', filters.program)
+  if (filters.community) params.append('community', filters.community)
+  if (filters.year) params.append('year', filters.year)
+  if (filters.status) params.append('status', filters.status)
+  if (filters.search) params.append('search', filters.search)
+  if (filters.sort) params.append('sort', filters.sort)
+  if (filters.ordering) params.append('ordering', filters.ordering)
+
+  const response = await axiosInstance.get(`/api/compliance/export/?${params.toString()}`, {
+    responseType: 'blob',
+  })
+
+  return response.data
+}
