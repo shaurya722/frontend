@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MapCommunity } from '@/features/map-communities/types'
 
 function escapeHtml(s: string) {
@@ -253,7 +253,110 @@ export default function LeafletMap({
   const clientDrawnLayersRef = useRef<any[]>([])
   /** Map<featureId, L.Polygon[]> — used to re-aggregate decomposed MultiPolygons on edit */
   const polygonsByFeatureIdRef = useRef<Map<string, any[]>>(new Map())
+  const onPolygonEditedRef = useRef(onPolygonEdited)
+  const editingLayerRef = useRef<any>(null)
+  const editingFeatureIdRef = useRef<string | null>(null)
+  const originalLatLngsRef = useRef<any>(null)
+  const editToolbarRef = useRef<HTMLDivElement | null>(null)
   const [leafletReady, setLeafletReady] = useState(false)
+
+  useEffect(() => {
+    onPolygonEditedRef.current = onPolygonEdited
+  }, [onPolygonEdited])
+
+  const enterPolygonEditMode = useCallback((layer: any, featureId: string, name: string) => {
+    // Cancel any currently active edit first
+    if (editingLayerRef.current) {
+      const prev = editingLayerRef.current
+      if (originalLatLngsRef.current) {
+        try { prev.setLatLngs(originalLatLngsRef.current) } catch { /* ignore */ }
+        try { prev.redraw?.() } catch { /* ignore */ }
+      }
+      try { prev.editing?.disable() } catch { /* ignore */ }
+      editToolbarRef.current?.remove()
+      editToolbarRef.current = null
+    }
+
+    try {
+      originalLatLngsRef.current = layer.getLatLngs()
+    } catch {
+      originalLatLngsRef.current = null
+    }
+    editingLayerRef.current = layer
+    editingFeatureIdRef.current = featureId
+
+    try {
+      layer.editing.enable()
+    } catch (e) {
+      console.warn('[Leaflet] Failed to enable polygon editing', e)
+      editingLayerRef.current = null
+      editingFeatureIdRef.current = null
+      return
+    }
+
+    if (!mapRef.current) return
+
+    const toolbar = document.createElement('div')
+    toolbar.style.cssText = 'position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1001;background:white;border-radius:8px;padding:8px 16px;box-shadow:0 2px 12px rgba(0,0,0,0.25);display:flex;gap:8px;align-items:center;white-space:nowrap;'
+    toolbar.innerHTML = `
+      <span style="font-size:13px;color:#374151;font-weight:500;">Editing: ${escapeHtml(name)}</span>
+      <button id="poly-save-btn" style="background:#059669;color:white;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:13px;font-weight:500;">Save</button>
+      <button id="poly-cancel-btn" style="background:#6b7280;color:white;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:13px;">Cancel</button>
+    `
+
+    const teardown = () => {
+      toolbar.remove()
+      editToolbarRef.current = null
+      editingLayerRef.current = null
+      editingFeatureIdRef.current = null
+      originalLatLngsRef.current = null
+    }
+
+    toolbar.querySelector('#poly-save-btn')?.addEventListener('click', () => {
+      const editLayer = editingLayerRef.current
+      const editId = editingFeatureIdRef.current
+      if (!editLayer) { teardown(); return }
+      try { editLayer.editing?.disable() } catch { /* ignore */ }
+      if (editId && onPolygonEditedRef.current) {
+        try {
+          const parts = polygonsByFeatureIdRef.current.get(editId) ?? []
+          const polyCoords: any[] = []
+          for (const part of parts) {
+            try {
+              const g = part.toGeoJSON()?.geometry
+              if (g?.type === 'Polygon' && Array.isArray(g.coordinates) && g.coordinates.length) {
+                polyCoords.push(g.coordinates)
+              }
+            } catch { /* skip */ }
+          }
+          if (polyCoords.length) {
+            const merged =
+              polyCoords.length === 1
+                ? { type: 'Polygon', coordinates: polyCoords[0] }
+                : { type: 'MultiPolygon', coordinates: polyCoords }
+            onPolygonEditedRef.current(editId, merged)
+          }
+        } catch (e) {
+          console.warn('[Leaflet] Failed to save polygon edit', e)
+        }
+      }
+      teardown()
+    })
+
+    toolbar.querySelector('#poly-cancel-btn')?.addEventListener('click', () => {
+      const editLayer = editingLayerRef.current
+      if (!editLayer) { teardown(); return }
+      if (originalLatLngsRef.current) {
+        try { editLayer.setLatLngs(originalLatLngsRef.current) } catch { /* ignore */ }
+        try { editLayer.redraw?.() } catch { /* ignore */ }
+      }
+      try { editLayer.editing?.disable() } catch { /* ignore */ }
+      teardown()
+    })
+
+    mapRef.current.appendChild(toolbar)
+    editToolbarRef.current = toolbar
+  }, [])
 
   useEffect(() => {
     // Only run on client side
@@ -362,7 +465,7 @@ export default function LeafletMap({
         edit: {
           featureGroup: drawnItems,
           remove: false,
-          edit: true,
+          edit: false,
         },
       })
       map.addControl(drawControl)
@@ -570,6 +673,13 @@ export default function LeafletMap({
 
     return () => {
       setLeafletReady(false)
+      // Cancel any active per-polygon edit
+      if (editingLayerRef.current) {
+        try { editingLayerRef.current.editing?.disable() } catch { /* ignore */ }
+        editingLayerRef.current = null
+      }
+      editToolbarRef.current?.remove()
+      editToolbarRef.current = null
       communityLayersRef.current.forEach((layer) => {
         try {
           layer.remove?.()
@@ -644,7 +754,7 @@ export default function LeafletMap({
         const popupHtml = `<div style="min-width:180px">
             <strong>${escapeHtml(c.name)}</strong><br/>
             <span style="font-size:12px;color:#666">${adjCount} adjacent communit${adjCount === 1 ? 'y' : 'ies'}</span>
-            ${onMapCommunityClick ? `<br/><button class="edit-community-btn" style="margin-top:8px;color:#059669;cursor:pointer;font-size:12px;">Click to Edit</button>` : ''}
+            <br/><button class="edit-boundary-btn" style="margin-top:8px;color:#3b82f6;cursor:pointer;font-size:12px;background:none;border:1px solid #3b82f6;padding:2px 8px;border-radius:3px;">Edit Boundary</button>${onMapCommunityClick ? `<button class="edit-community-btn" style="margin-top:8px;margin-left:4px;color:#059669;cursor:pointer;font-size:12px;background:none;border:1px solid #059669;padding:2px 8px;border-radius:3px;">Edit Info</button>` : ''}
           </div>`
 
         const partsForFeature: any[] = []
@@ -668,22 +778,27 @@ export default function LeafletMap({
           }
 
           polygon.bindPopup(popupHtml)
-          if (onMapCommunityClick) {
-            polygon.on('popupopen', (e: any) => {
-              const container = e?.popup?.getElement?.()
-              if (!container) return
-              const btn = container.querySelector('.edit-community-btn')
-              if (!btn) return
-              const handler = (ev: Event) => {
-                ev.stopPropagation()
-                onMapCommunityClick(c)
-              }
-              btn.addEventListener('click', handler)
-              polygon.once('popupclose', () => {
-                try { btn.removeEventListener('click', handler) } catch { /* ignore */ }
-              })
+          polygon.on('popupopen', (e: any) => {
+            const container = e?.popup?.getElement?.()
+            if (!container) return
+            const editBoundaryBtn = container.querySelector('.edit-boundary-btn')
+            const editCommunityBtn = onMapCommunityClick ? container.querySelector('.edit-community-btn') : null
+            const boundaryHandler = editBoundaryBtn ? (ev: Event) => {
+              ev.stopPropagation()
+              polygon.closePopup()
+              enterPolygonEditMode(polygon, String(c.id), c.name)
+            } : null
+            const communityHandler = editCommunityBtn ? (ev: Event) => {
+              ev.stopPropagation()
+              onMapCommunityClick!(c)
+            } : null
+            if (editBoundaryBtn && boundaryHandler) editBoundaryBtn.addEventListener('click', boundaryHandler)
+            if (editCommunityBtn && communityHandler) editCommunityBtn.addEventListener('click', communityHandler)
+            polygon.once('popupclose', () => {
+              if (editBoundaryBtn && boundaryHandler) try { editBoundaryBtn.removeEventListener('click', boundaryHandler) } catch { /* ignore */ }
+              if (editCommunityBtn && communityHandler) try { editCommunityBtn.removeEventListener('click', communityHandler) } catch { /* ignore */ }
             })
-          }
+          })
 
           drawnItems.addLayer(polygon)
           communityLayersRef.current.push(polygon)
@@ -749,7 +864,7 @@ export default function LeafletMap({
         const popupHtml = `<div style="min-width:180px">
             <strong>${escapeHtml(m.name)}</strong><br/>
             <span style="font-size:12px;color:#666">${adjCount} adjacent communit${suffix}</span>
-            ${onMapCommunityClick ? `<br /><button class="edit-community-btn" style="margin-top:8px;color:#059669;cursor:pointer;font-size:12px;">Click to Edit</button>` : ''}
+            <br/><button class="edit-boundary-btn" style="margin-top:8px;color:#3b82f6;cursor:pointer;font-size:12px;background:none;border:1px solid #3b82f6;padding:2px 8px;border-radius:3px;">Edit Boundary</button>${onMapCommunityClick ? `<button class="edit-community-btn" style="margin-top:8px;margin-left:4px;color:#059669;cursor:pointer;font-size:12px;background:none;border:1px solid #059669;padding:2px 8px;border-radius:3px;">Edit Info</button>` : ''}
           </div>`
 
         const partsForFeature: any[] = []
@@ -771,22 +886,27 @@ export default function LeafletMap({
           }
 
           polygon.bindPopup(popupHtml)
-          if (onMapCommunityClick) {
-            polygon.on('popupopen', (e: any) => {
-              const container = e?.popup?.getElement?.()
-              if (!container) return
-              const btn = container.querySelector('.edit-community-btn')
-              if (!btn) return
-              const handler = (ev: Event) => {
-                ev.stopPropagation()
-                onMapCommunityClick({ id: m.id, name: m.name, geometry: geom } as any)
-              }
-              btn.addEventListener('click', handler)
-              polygon.once('popupclose', () => {
-                try { btn.removeEventListener('click', handler) } catch { /* ignore */ }
-              })
+          polygon.on('popupopen', (e: any) => {
+            const container = e?.popup?.getElement?.()
+            if (!container) return
+            const editBoundaryBtn = container.querySelector('.edit-boundary-btn')
+            const editCommunityBtn = onMapCommunityClick ? container.querySelector('.edit-community-btn') : null
+            const boundaryHandler = editBoundaryBtn ? (ev: Event) => {
+              ev.stopPropagation()
+              polygon.closePopup()
+              enterPolygonEditMode(polygon, String(m.id), m.name)
+            } : null
+            const communityHandler = editCommunityBtn ? (ev: Event) => {
+              ev.stopPropagation()
+              onMapCommunityClick!({ id: m.id, name: m.name, geometry: geom } as any)
+            } : null
+            if (editBoundaryBtn && boundaryHandler) editBoundaryBtn.addEventListener('click', boundaryHandler)
+            if (editCommunityBtn && communityHandler) editCommunityBtn.addEventListener('click', communityHandler)
+            polygon.once('popupclose', () => {
+              if (editBoundaryBtn && boundaryHandler) try { editBoundaryBtn.removeEventListener('click', boundaryHandler) } catch { /* ignore */ }
+              if (editCommunityBtn && communityHandler) try { editCommunityBtn.removeEventListener('click', communityHandler) } catch { /* ignore */ }
             })
-          }
+          })
 
           drawnItems.addLayer(polygon)
           municipalityLayersRef.current.push(polygon)
