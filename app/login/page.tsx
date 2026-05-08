@@ -135,7 +135,7 @@ export default function LoginPage() {
               </div>
               <div className="flex justify-between">
                 <span className="font-medium">Password:</span>
-                <span>admin123</span>
+                <span>admin</span>
               </div>
             </div>
           </CardContent>
