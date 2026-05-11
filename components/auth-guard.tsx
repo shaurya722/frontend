@@ -11,8 +11,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const checkAuth = () => {
-      const userData = localStorage.getItem('user')
-      const isAuthenticated = !!userData
+      const accessToken = localStorage.getItem('access_token')
+      const isAuthenticated = !!accessToken
 
       // If user is authenticated and on a public route, redirect to protected route
       if (isAuthenticated && isPublicRoute(pathname)) {

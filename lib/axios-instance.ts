@@ -111,7 +111,10 @@ axiosInstance.interceptors.response.use(
         if (typeof window !== 'undefined') {
           localStorage.removeItem('access_token')
           localStorage.removeItem('refresh_token')
-          window.location.href = '/login'
+          localStorage.removeItem('user')
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login'
+          }
         }
       }
 
