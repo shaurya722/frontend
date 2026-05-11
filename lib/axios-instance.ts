@@ -106,17 +106,13 @@ axiosInstance.interceptors.response.use(
         errors: parsedData?.errors,
       })
 
-      // Handle 401 Unauthorized
-      //
-      // IMPORTANT: Do not hard-redirect to `/login` from a global interceptor.
-      // Some pages (like report configuration) may hit endpoints that return 401
-      // while the user is still "logged in" via frontend-only auth (mock tokens),
-      // and an unconditional redirect is a jarring UX.
-      //
-      // Instead, bubble the error up so the calling UI can decide how to handle it
-      // (show an error state, prompt re-auth, etc.).
+      // Handle 401 Unauthorized — token expired or invalid, redirect to login
       if (status === 401) {
-        // No-op here by design.
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+          window.location.href = '/login'
+        }
       }
 
       // Handle other specific status codes
