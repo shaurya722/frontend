@@ -66,6 +66,7 @@ export default function AdjacentReallocation() {
   const { data: censusYearsData, isSuccess: censusYearsLoaded } = useCensusYears()
 
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [program, setProgram] = useState<string>('Paint')
   const [censusYear, setCensusYear] = useState('')
   const [page, setPage] = useState(1)
@@ -88,6 +89,15 @@ export default function AdjacentReallocation() {
     setCensusYear(String(censusYearOptions[0]))
   }, [censusYearOptions, censusYear])
 
+  // Debounce search input and reset page to 1
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
   const handleSort = (field: string) => {
     if (sortBy === field) {
       setSortOrder(sortOrder === 1 ? -1 : 1)
@@ -102,11 +112,11 @@ export default function AdjacentReallocation() {
       program,
       year: parseInt(censusYear, 10),
       sort: sortOrder === -1 ? `-${sortBy}` : sortBy,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       page,
       limit: pageSize,
     }),
-    [program, censusYear, sortOrder, sortBy, search, page, pageSize],
+    [program, censusYear, sortOrder, sortBy, debouncedSearch, page, pageSize],
   )
 
   const {
@@ -130,7 +140,7 @@ export default function AdjacentReallocation() {
   const summary = listData?.summary
 
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = debouncedSearch.trim().toLowerCase()
     if (!q) return rows
     return rows.filter((c) => {
       if (c.name.toLowerCase().includes(q)) return true
@@ -138,7 +148,7 @@ export default function AdjacentReallocation() {
         a.name.toLowerCase().includes(q),
       )
     })
-  }, [rows, search])
+  }, [rows, debouncedSearch])
 
   const [allocateOpen, setAllocateOpen] = useState(false)
   const [selectedCommunity, setSelectedCommunity] =

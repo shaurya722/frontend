@@ -94,7 +94,10 @@ export default function BaseCommunitiesPage() {
   const [selectedAdjacentIds, setSelectedAdjacentIds] = useState<string[]>([])
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 500)
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 300)
     return () => clearTimeout(timer)
   }, [search])
 
@@ -157,10 +160,22 @@ export default function BaseCommunitiesPage() {
   const deleteMutation = useDeleteBaseCommunity()
 
   const totalCount = data?.count || 0
-  const hasNext = Boolean(data?.next)
-  const hasPrev = Boolean(data?.previous)
+  const totalPages = Math.max(1, Math.ceil(totalCount / Math.max(1, pageSize)))
+  const hasNext = page < totalPages
+  const hasPrev = page > 1
 
-  const allVisibleIds = useMemo(() => (data?.results || []).map((c) => c.id), [data])
+  // Client-side filter fallback in case the backend ignores 'search'
+  const displayResults = useMemo(() => {
+    const rows = data?.results ?? []
+    const q = debouncedSearch.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter((c) =>
+      (c.name ?? '').toLowerCase().includes(q) ||
+      c.adjacent?.some((a) => (a.name ?? '').toLowerCase().includes(q)),
+    )
+  }, [data?.results, debouncedSearch])
+
+  const allVisibleIds = useMemo(() => displayResults.map((c) => c.id), [displayResults])
   const allVisibleSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selectedIds.includes(id))
 
   const toggleSelectAllVisible = (checked: boolean) => {
@@ -356,7 +371,7 @@ export default function BaseCommunitiesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data?.results.map((community) => (
+                      {displayResults.map((community) => (
                         <TableRow key={community.id}>
                           <TableCell>
                             <div className='font-medium'>{community.name}</div>
@@ -402,11 +417,20 @@ export default function BaseCommunitiesPage() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {data?.results.length === 0 && (
+                      {displayResults.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={6} className='text-center py-8 text-muted-foreground'>
-                            <div className='text-lg font-medium mb-2'>No communities found</div>
-                            <p className='text-sm'>Add a new base community to get started</p>
+                            {debouncedSearch.trim() ? (
+                              <>
+                                <div className='text-lg font-medium mb-2'>No communities match &quot;{debouncedSearch.trim()}&quot;</div>
+                                <p className='text-sm'>Try a different search term</p>
+                              </>
+                            ) : (
+                              <>
+                                <div className='text-lg font-medium mb-2'>No communities found</div>
+                                <p className='text-sm'>Add a new base community to get started</p>
+                              </>
+                            )}
                           </TableCell>
                         </TableRow>
                       )}
@@ -418,7 +442,7 @@ export default function BaseCommunitiesPage() {
                   page={page}
                   pageSize={pageSize}
                   totalCount={totalCount}
-                  currentCount={data?.results.length || 0}
+                  currentCount={displayResults.length}
                   onPageChange={setPage}
                   isLoading={isLoading}
                   hasNext={hasNext}

@@ -291,7 +291,10 @@ export default function SiteManagement() {
   }, [censusYears, year])
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 500)
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 500)
     return () => clearTimeout(timer)
   }, [search])
 
